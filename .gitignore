@@ -205,3 +205,12 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# BMAD generated output
+_bmad-output/
+
+# BMAD method
+_bmad
+
+# Claude Code (uncomment to exclude project-level Claude settings)
+.claude/
