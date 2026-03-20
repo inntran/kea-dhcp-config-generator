@@ -210,7 +210,10 @@ __marimo__/
 _bmad-output/
 
 # BMAD method
-_bmad
+_bmad/
 
 # Claude Code (uncomment to exclude project-level Claude settings)
 .claude/
+
+# dot-agent directory, used by Codex
+.agents/

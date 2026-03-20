@@ -1,0 +1,40 @@
+[build-system]
+requires = ["uv_build"]
+build-backend = "uv_build"
+
+[project]
+name = "kea-dhcp-config-generator"
+version = "0.1.0"
+description = "Generate Kea DHCPv4/DHCPv6 JSON configuration from declarative YAML"
+readme = "README.md"
+authors = [
+    { name = "Yinchuan Song", email = "songyinchuan@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "ruamel.yaml>=0.18",
+    "pydantic>=2.10",
+    "deepmerge>=1.1",
+    "jsonschema-rs>=0.26",
+    "typer>=0.12",
+]
+
+[project.scripts]
+kea-confgen = "kea_dhcp_config_generator.cli:app"
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-cov", "ruff"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+# Typer requires function calls (typer.Option, typer.Argument) in default argument positions
+"src/kea_dhcp_config_generator/cli.py" = ["B008"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
