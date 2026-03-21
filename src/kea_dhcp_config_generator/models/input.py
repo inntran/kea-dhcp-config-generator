@@ -226,7 +226,7 @@ class SubnetV4Model(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     subnet: str  # CIDR: "10.0.1.0/24"
-    id: int | None = None  # auto-assigned by builder if absent (FR13)
+    id: int | None = Field(None, ge=1)  # auto-assigned by builder if absent (FR13)
     pools: list[PoolV4Model] = Field(default_factory=list)
     reservations: list[HostReservationV4Model] = Field(default_factory=list)
     option_profile: str | None = None  # tool-invented key; no alias needed
@@ -254,7 +254,7 @@ class SubnetV6Model(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     subnet: str  # IPv6 CIDR: "2001:db8::/48"
-    id: int | None = None
+    id: int | None = Field(None, ge=1)
     pools: list[PoolV4Model] = Field(default_factory=list)  # range is a string for both v4/v6
     pd_pools: list[PdPoolModel] = Field(default_factory=list, alias="pd-pools")
     reservations: list[HostReservationV6Model] = Field(default_factory=list)
