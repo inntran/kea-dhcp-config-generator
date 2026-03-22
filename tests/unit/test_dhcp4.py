@@ -624,3 +624,206 @@ def test_subnet_with_no_options_has_no_option_data_key():
     subnet = result["Dhcp4"]["subnet4"][0]
 
     assert "option-data" not in subnet
+
+
+# ---------------------------------------------------------------------------
+# Story 2.3 — MAC-based Host Reservations (AC #1–#5 + edge cases)
+# ---------------------------------------------------------------------------
+
+
+def test_reservations_array_present_when_defined():
+    """AC #1: subnet entry contains 'reservations' array when reservations defined."""
+    config = _cfg({
+        "subnets": [{
+            "subnet": "192.168.1.0/24",
+            "reservations": [
+                {"hw-address": "aa:bb:cc:dd:ee:ff", "ip-address": "192.168.1.100"},
+            ],
+        }]
+    })
+    result = build(config)
+    subnet = result["Dhcp4"]["subnet4"][0]
+
+    assert "reservations" in subnet
+    assert len(subnet["reservations"]) == 1
+
+
+def test_reservation_kea_keys_hw_address_ip_address_hostname():
+    """AC #2: hw-address, ip-address, hostname all appear with Kea hyphenated key names."""
+    config = _cfg({
+        "subnets": [{
+            "subnet": "192.168.1.0/24",
+            "reservations": [
+                {
+                    "hw-address": "1a:1b:1c:1d:1e:1f",
+                    "ip-address": "192.168.1.100",
+                    "hostname": "printer",
+                },
+            ],
+        }]
+    })
+    result = build(config)
+    entry = result["Dhcp4"]["subnet4"][0]["reservations"][0]
+
+    assert entry["hw-address"] == "1a:1b:1c:1d:1e:1f"
+    assert entry["ip-address"] == "192.168.1.100"
+    assert entry["hostname"] == "printer"
+
+
+def test_reservation_per_host_option_data_merge_by_name():
+    """AC #3: per-host option-data is processed via merge_option_data (merge-by-name).
+
+    Two entries with the same name collapse to one (most-specific wins), proving
+    that merge_option_data is actually exercised rather than acting as a pass-through.
+    """
+    config = _cfg({
+        "subnets": [{
+            "subnet": "192.168.1.0/24",
+            "reservations": [
+                {
+                    "hw-address": "aa:bb:cc:dd:ee:ff",
+                    "ip-address": "192.168.1.100",
+                    "option-data": [
+                        {"name": "domain-name-servers", "data": "8.8.8.8"},
+                        {"name": "domain-name-servers", "data": "1.1.1.1"},  # duplicate name
+                    ],
+                },
+            ],
+        }]
+    })
+    result = build(config)
+    entry = result["Dhcp4"]["subnet4"][0]["reservations"][0]
+
+    assert "option-data" in entry
+    dns_entries = [e for e in entry["option-data"] if e["name"] == "domain-name-servers"]
+    assert len(dns_entries) == 1  # merge-by-name deduplicated
+    assert dns_entries[0]["data"] == "1.1.1.1"  # last-wins (most-specific)
+
+
+def test_no_reservations_key_when_empty():
+    """AC #4: no 'reservations' key in subnet output when subnet has no reservations."""
+    config = _cfg({"subnets": [{"subnet": "10.0.0.0/24"}]})
+    result = build(config)
+    subnet = result["Dhcp4"]["subnet4"][0]
+
+    assert "reservations" not in subnet
+
+
+def test_multiple_reservations_in_yaml_order():
+    """AC #5: multiple reservations appear as separate entries in YAML order."""
+    config = _cfg({
+        "subnets": [{
+            "subnet": "192.168.1.0/24",
+            "reservations": [
+                {"hw-address": "aa:bb:cc:dd:ee:01", "ip-address": "192.168.1.101"},
+                {"hw-address": "aa:bb:cc:dd:ee:02", "ip-address": "192.168.1.102"},
+                {"hw-address": "aa:bb:cc:dd:ee:03", "ip-address": "192.168.1.103"},
+            ],
+        }]
+    })
+    result = build(config)
+    reservations = result["Dhcp4"]["subnet4"][0]["reservations"]
+
+    assert len(reservations) == 3
+    assert reservations[0]["ip-address"] == "192.168.1.101"
+    assert reservations[1]["ip-address"] == "192.168.1.102"
+    assert reservations[2]["ip-address"] == "192.168.1.103"
+
+
+def test_reservation_hostname_omitted_when_none():
+    """Edge case: hostname is omitted from reservation entry when not provided."""
+    config = _cfg({
+        "subnets": [{
+            "subnet": "192.168.1.0/24",
+            "reservations": [
+                {"hw-address": "aa:bb:cc:dd:ee:ff", "ip-address": "192.168.1.100"},
+            ],
+        }]
+    })
+    result = build(config)
+    entry = result["Dhcp4"]["subnet4"][0]["reservations"][0]
+
+    assert "hostname" not in entry
+
+
+def test_reservation_option_data_omitted_when_empty():
+    """Edge case: option-data key omitted when reservation has no option overrides."""
+    config = _cfg({
+        "subnets": [{
+            "subnet": "192.168.1.0/24",
+            "reservations": [
+                {"hw-address": "aa:bb:cc:dd:ee:ff", "ip-address": "192.168.1.100"},
+            ],
+        }]
+    })
+    result = build(config)
+    entry = result["Dhcp4"]["subnet4"][0]["reservations"][0]
+
+    assert "option-data" not in entry
+
+
+def test_reservation_key_order():
+    """Key order: hw-address → ip-address → hostname → option-data (Kea-natural)."""
+    config = _cfg({
+        "subnets": [{
+            "subnet": "192.168.1.0/24",
+            "reservations": [
+                {
+                    "hw-address": "1a:1b:1c:1d:1e:1f",
+                    "ip-address": "192.168.1.100",
+                    "hostname": "printer",
+                    "option-data": [{"name": "domain-name-servers", "data": "8.8.4.4"}],
+                },
+            ],
+        }]
+    })
+    result = build(config)
+    entry_keys = list(result["Dhcp4"]["subnet4"][0]["reservations"][0].keys())
+
+    assert entry_keys == ["hw-address", "ip-address", "hostname", "option-data"]
+
+
+def test_reservations_appear_after_pools_in_subnet():
+    """Subnet key order: reservations appears after pools."""
+    config = _cfg({
+        "subnets": [{
+            "subnet": "192.168.1.0/24",
+            "pools": [{"range": "192.168.1.10 - 192.168.1.50"}],
+            "reservations": [
+                {"hw-address": "aa:bb:cc:dd:ee:ff", "ip-address": "192.168.1.100"},
+            ],
+        }]
+    })
+    result = build(config)
+    subnet_keys = list(result["Dhcp4"]["subnet4"][0].keys())
+
+    assert "pools" in subnet_keys
+    assert "reservations" in subnet_keys
+    assert subnet_keys.index("pools") < subnet_keys.index("reservations")
+
+
+def test_reservation_does_not_inherit_subnet_options():
+    """Reservation with no option-data emits no option-data even when subnet has options.
+
+    Kea handles option inheritance at runtime; the builder must emit only
+    reservation-scope options (scope-isolation rule).
+    """
+    config = _cfg({
+        "subnets": [{
+            "subnet": "192.168.1.0/24",
+            "dns-servers": ["8.8.8.8"],
+            "reservations": [
+                {"hw-address": "aa:bb:cc:dd:ee:ff", "ip-address": "192.168.1.100"},
+            ],
+        }]
+    })
+    result = build(config)
+    subnet = result["Dhcp4"]["subnet4"][0]
+
+    # Subnet has option-data at its own scope
+    assert "option-data" in subnet
+    # Reservation must NOT inherit it
+    reservation = subnet["reservations"][0]
+    assert "option-data" not in reservation
+
+

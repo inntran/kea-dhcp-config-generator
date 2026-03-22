@@ -6,8 +6,10 @@ Public API:
 
 Key ordering follows Kea documentation examples (not alphabetical):
     Dhcp4 level:  valid-lifetime → renew-timer → rebind-timer → option-data → subnet4
-    Subnet level: id → subnet → valid-lifetime → renew-timer → rebind-timer → option-data → pools
+    Subnet level: id → subnet → valid-lifetime → renew-timer → rebind-timer → client-class
+                  → option-data → pools → reservations
     Pool level:   pool → client-classes (only when set)
+    Reservation:  hw-address → ip-address → [hostname] → [option-data]
 
 Option fields on models (dns_servers, domain_name, ntp_servers, routers) are converted to
 Kea option-data format at their respective scope; explicit option_data fields are merged
@@ -19,6 +21,7 @@ from kea_dhcp_config_generator.builders.pools import calculate_pool_range, parse
 from kea_dhcp_config_generator.models.input import (
     Dhcp4Config,
     GlobalConfig,
+    HostReservationV4Model,
     PoolV4Model,
     SubnetV4Model,
 )
@@ -127,6 +130,24 @@ def _build_pool_entry(pool: PoolV4Model, subnet_cidr: str) -> dict:
     return entry
 
 
+def _build_reservation_entry(reservation: HostReservationV4Model) -> dict:
+    """Build a single Kea host reservation dict.
+
+    Key order (Kea-natural): hw-address → ip-address → hostname → option-data
+    Omit hostname if None; omit option-data if empty.
+    """
+    entry: dict = {
+        "hw-address": reservation.hw_address,
+        "ip-address": reservation.ip_address,
+    }
+    if reservation.hostname is not None:
+        entry["hostname"] = reservation.hostname
+    option_data = merge_option_data([], reservation.option_data)
+    if option_data:
+        entry["option-data"] = option_data
+    return entry
+
+
 def _build_subnet4(dhcp4: Dhcp4Config) -> list[dict]:
     """Build the subnet4 list.
 
@@ -137,7 +158,8 @@ def _build_subnet4(dhcp4: Dhcp4Config) -> list[dict]:
           from 1 in YAML order.
 
     Subnet key order (Kea-natural):
-        id → subnet → valid-lifetime → renew-timer → rebind-timer → option-data → pools
+        id → subnet → valid-lifetime → renew-timer → rebind-timer → client-class
+        → option-data → pools → reservations
     """
     # Validate all-or-none ID consistency.
     # If any subnet has an explicit id, all must — mixing is not allowed because
@@ -188,6 +210,12 @@ def _build_subnet4(dhcp4: Dhcp4Config) -> list[dict]:
         if subnet.pools:
             subnet_dict["pools"] = [
                 _build_pool_entry(pool, subnet.subnet) for pool in subnet.pools
+            ]
+
+        # Reservations (after pools, Kea-natural order)
+        if subnet.reservations:
+            subnet_dict["reservations"] = [
+                _build_reservation_entry(r) for r in subnet.reservations
             ]
 
         subnets.append(subnet_dict)
