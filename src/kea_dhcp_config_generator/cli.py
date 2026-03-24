@@ -4,9 +4,13 @@ from pathlib import Path
 
 import typer
 
-from kea_dhcp_config_generator import loader
+from kea_dhcp_config_generator import loader, writer
+from kea_dhcp_config_generator.builders import dhcp4 as dhcp4_builder
 from kea_dhcp_config_generator.models import input as input_models
-from kea_dhcp_config_generator.validation.errors import ConfigError, KeaConfigError
+from kea_dhcp_config_generator.validation.errors import (
+    ConfigError,
+    KeaConfigError,
+)
 
 app = typer.Typer(
     name="kea-confgen",
@@ -34,6 +38,17 @@ def main(
         "-c",
         help="Path to the YAML configuration file.",
     ),
+    overwrite: bool = typer.Option(
+        False,
+        "--overwrite",
+        help="Write to canonical filename (kea-<protocol>.conf); overwrite if it exists.",
+    ),
+    output_dir: Path = typer.Option(
+        Path("."),
+        "--output-dir",
+        hidden=True,
+        help="Directory to write generated files (default: current directory).",
+    ),
 ) -> None:
     """Generate Kea DHCPv4/DHCPv6 JSON configuration from YAML."""
     # Stage 1: Load YAML — file-not-found and YAML syntax errors → exit 2
@@ -49,7 +64,7 @@ def main(
     # Cannot mix except* and except in the same try block (PEP 654), so nested.
     try:
         try:
-            input_models.parse(raw)
+            config_model = input_models.parse(raw)
         except* ConfigError as eg:
             for error in eg.exceptions:
                 typer.echo(_format_error(error), err=True)
@@ -60,7 +75,22 @@ def main(
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=2) from None
 
-    # Stage 3: Generation (Epic 2+) — not yet implemented
+    # Stage 3: Generation — DHCPv4 config build + output file write
     # stdout is reserved for generated file paths (one per line).
-    # No files generated in this story → stdout is empty on success.
+    try:
+        if config_model.dhcp4 is not None:
+            built = dhcp4_builder.build(config_model)
+            output_path = writer.write(
+                built,
+                "dhcp4",
+                output_dir,
+                overwrite=overwrite,
+            )
+            typer.echo(str(output_path))  # stdout: generated file path
+    except typer.Exit:
+        raise
+    except Exception as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=2) from None
+
     raise typer.Exit(code=0)

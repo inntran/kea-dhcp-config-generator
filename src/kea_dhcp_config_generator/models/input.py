@@ -19,12 +19,34 @@ YAML key conventions:
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 from ruamel.yaml.comments import CommentedMap
 
 from kea_dhcp_config_generator.validation.errors import ConfigError
+
+# ---------------------------------------------------------------------------
+# ASCII string type
+# ---------------------------------------------------------------------------
+
+
+def _require_ascii(v: str) -> str:
+    if not v.isascii():
+        raise ValueError("must contain only ASCII characters")
+    return v
+
+
+AsciiStr = Annotated[str, AfterValidator(_require_ascii)]
+
 
 # ---------------------------------------------------------------------------
 # Duration parsing
@@ -144,10 +166,10 @@ class OptionProfileModel(BaseModel):
     valid_lifetime: int | None = Field(None, alias="valid-lifetime")
     renew_timer: int | None = Field(None, alias="renew-timer")
     rebind_timer: int | None = Field(None, alias="rebind-timer")
-    dns_servers: list[str] = Field(default_factory=list, alias="dns-servers")
-    domain_name: str | None = Field(None, alias="domain-name")
-    ntp_servers: list[str] = Field(default_factory=list, alias="ntp-servers")
-    routers: list[str] = Field(default_factory=list)
+    dns_servers: list[AsciiStr] = Field(default_factory=list, alias="dns-servers")
+    domain_name: AsciiStr | None = Field(None, alias="domain-name")
+    ntp_servers: list[AsciiStr] = Field(default_factory=list, alias="ntp-servers")
+    routers: list[AsciiStr] = Field(default_factory=list)
 
     @field_validator("valid_lifetime", "renew_timer", "rebind_timer", mode="before")
     @classmethod
@@ -167,10 +189,10 @@ class PoolV4Model(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    range: str  # "auto" or "x.x.x.x - x.x.x.x"
+    range: AsciiStr  # "auto" or "x.x.x.x - x.x.x.x"
     skip_start: int = Field(0, alias="skip-start")
     skip_end: int = Field(0, alias="skip-end")
-    client_class: str | None = Field(None, alias="client-class")
+    client_class: AsciiStr | None = Field(None, alias="client-class")
 
 
 # ---------------------------------------------------------------------------
@@ -183,7 +205,7 @@ class PdPoolModel(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    prefix: str
+    prefix: AsciiStr
     prefix_len: int = Field(alias="prefix-len")
     delegated_len: int = Field(alias="delegated-len")
 
@@ -198,9 +220,9 @@ class HostReservationV4Model(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    hw_address: str = Field(alias="hw-address")
-    ip_address: str = Field(alias="ip-address")
-    hostname: str | None = None
+    hw_address: AsciiStr = Field(alias="hw-address")
+    ip_address: AsciiStr = Field(alias="ip-address")
+    hostname: AsciiStr | None = None
     option_data: list[dict[str, Any]] = Field(default_factory=list, alias="option-data")
 
 
@@ -209,9 +231,9 @@ class HostReservationV6Model(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    duid: str
-    ip_address: str | None = Field(None, alias="ip-address")
-    hostname: str | None = None
+    duid: AsciiStr
+    ip_address: AsciiStr | None = Field(None, alias="ip-address")
+    hostname: AsciiStr | None = None
     option_data: list[dict[str, Any]] = Field(default_factory=list, alias="option-data")
 
 
@@ -225,19 +247,19 @@ class SubnetV4Model(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    subnet: str  # CIDR: "10.0.1.0/24"
+    subnet: AsciiStr  # CIDR: "10.0.1.0/24"
     id: int | None = Field(None, ge=1)  # auto-assigned by builder if absent (FR13)
     pools: list[PoolV4Model] = Field(default_factory=list)
     reservations: list[HostReservationV4Model] = Field(default_factory=list)
-    option_profile: str | None = None  # tool-invented key; no alias needed
+    option_profile: AsciiStr | None = None  # tool-invented key; no alias needed
     valid_lifetime: int | None = Field(None, alias="valid-lifetime")
     renew_timer: int | None = Field(None, alias="renew-timer")
     rebind_timer: int | None = Field(None, alias="rebind-timer")
-    dns_servers: list[str] = Field(default_factory=list, alias="dns-servers")
-    domain_name: str | None = Field(None, alias="domain-name")
-    ntp_servers: list[str] = Field(default_factory=list, alias="ntp-servers")
-    routers: list[str] = Field(default_factory=list)
-    client_class: str | None = Field(None, alias="client-class")
+    dns_servers: list[AsciiStr] = Field(default_factory=list, alias="dns-servers")
+    domain_name: AsciiStr | None = Field(None, alias="domain-name")
+    ntp_servers: list[AsciiStr] = Field(default_factory=list, alias="ntp-servers")
+    routers: list[AsciiStr] = Field(default_factory=list)
+    client_class: AsciiStr | None = Field(None, alias="client-class")
     option_data: list[dict[str, Any]] = Field(default_factory=list, alias="option-data")
 
     @field_validator("valid_lifetime", "renew_timer", "rebind_timer", mode="before")
@@ -253,17 +275,17 @@ class SubnetV6Model(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    subnet: str  # IPv6 CIDR: "2001:db8::/48"
+    subnet: AsciiStr  # IPv6 CIDR: "2001:db8::/48"
     id: int | None = Field(None, ge=1)
     pools: list[PoolV4Model] = Field(default_factory=list)  # range is a string for both v4/v6
     pd_pools: list[PdPoolModel] = Field(default_factory=list, alias="pd-pools")
     reservations: list[HostReservationV6Model] = Field(default_factory=list)
-    option_profile: str | None = None
+    option_profile: AsciiStr | None = None
     valid_lifetime: int | None = Field(None, alias="valid-lifetime")
     preferred_lifetime: int | None = Field(None, alias="preferred-lifetime")
     renew_timer: int | None = Field(None, alias="renew-timer")
     rebind_timer: int | None = Field(None, alias="rebind-timer")
-    dns_servers: list[str] = Field(default_factory=list, alias="dns-servers")
+    dns_servers: list[AsciiStr] = Field(default_factory=list, alias="dns-servers")
     option_data: list[dict[str, Any]] = Field(default_factory=list, alias="option-data")
 
     @field_validator(
@@ -289,10 +311,10 @@ class Dhcp4Config(BaseModel):
     valid_lifetime: int | None = Field(None, alias="valid-lifetime")
     renew_timer: int | None = Field(None, alias="renew-timer")
     rebind_timer: int | None = Field(None, alias="rebind-timer")
-    dns_servers: list[str] = Field(default_factory=list, alias="dns-servers")
-    domain_name: str | None = Field(None, alias="domain-name")
-    ntp_servers: list[str] = Field(default_factory=list, alias="ntp-servers")
-    routers: list[str] = Field(default_factory=list)
+    dns_servers: list[AsciiStr] = Field(default_factory=list, alias="dns-servers")
+    domain_name: AsciiStr | None = Field(None, alias="domain-name")
+    ntp_servers: list[AsciiStr] = Field(default_factory=list, alias="ntp-servers")
+    routers: list[AsciiStr] = Field(default_factory=list)
     option_data: list[dict[str, Any]] = Field(default_factory=list, alias="option-data")
     subnets: list[SubnetV4Model] = Field(default_factory=list)
 
@@ -313,7 +335,7 @@ class Dhcp6Config(BaseModel):
     preferred_lifetime: int | None = Field(None, alias="preferred-lifetime")
     renew_timer: int | None = Field(None, alias="renew-timer")
     rebind_timer: int | None = Field(None, alias="rebind-timer")
-    dns_servers: list[str] = Field(default_factory=list, alias="dns-servers")
+    dns_servers: list[AsciiStr] = Field(default_factory=list, alias="dns-servers")
     option_data: list[dict[str, Any]] = Field(default_factory=list, alias="option-data")
     subnets: list[SubnetV6Model] = Field(default_factory=list)
 
@@ -344,7 +366,7 @@ class GlobalConfig(BaseModel):
     dhcp4: Dhcp4Config | None = None
     dhcp6: Dhcp6Config | None = None
     option_profiles: dict[str, OptionProfileModel] = Field(default_factory=dict)
-    fingerprint_library_version: str | None = None
+    fingerprint_library_version: AsciiStr | None = None
 
     @model_validator(mode="after")
     def require_at_least_one_protocol(self) -> GlobalConfig:

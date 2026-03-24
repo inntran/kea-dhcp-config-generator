@@ -26,10 +26,10 @@ def test_valid_dhcp6_only_config_exits_zero(tmp_path):
     assert result.exit_code == 0
 
 
-def test_valid_config_stdout_is_empty(tmp_path):
-    """No output files are generated in this story; stdout must be empty."""
+def test_valid_dhcp6_only_config_stdout_is_empty(tmp_path):
+    """DHCPv6-only config: no DHCPv4 builder yet → stdout empty on success."""
     cfg = tmp_path / "config.yaml"
-    cfg.write_text("dhcp4:\n  subnets: []\n")
+    cfg.write_text("dhcp6:\n  subnets: []\n")
     result = runner.invoke(app, ["--config", str(cfg)])
     assert result.stdout == ""
 
@@ -116,10 +116,10 @@ def test_empty_config_file_exits_two(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_success_produces_no_stdout_content(tmp_path):
-    """No generation in this story — stdout is empty on success."""
+def test_success_dhcp6_only_stdout_empty(tmp_path):
+    """DHCPv6-only config produces no output file path on stdout."""
     cfg = tmp_path / "config.yaml"
-    cfg.write_text("dhcp4:\n  subnets: []\n")
+    cfg.write_text("dhcp6:\n  subnets: []\n")
     result = runner.invoke(app, ["--config", str(cfg)])
     assert result.exit_code == 0
     assert result.stdout == ""
@@ -163,3 +163,45 @@ def test_yaml_syntax_error_exits_two(tmp_path):
     result = runner.invoke(app, ["--config", str(cfg)])
     assert result.exit_code == 2
     assert "Error:" in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# Story 2.4: Generation output — stdout path, exit codes, --no-suffix, --overwrite
+# ---------------------------------------------------------------------------
+
+
+def test_valid_dhcp4_config_stdout_contains_path(tmp_path):
+    """AC #1: successful generation writes output file path to stdout."""
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("dhcp4:\n  subnets: []\n")
+    result = runner.invoke(app, ["--config", str(cfg), "--output-dir", str(tmp_path)])
+    assert result.exit_code == 0
+    assert result.stdout.strip().endswith(".conf")
+
+
+def test_valid_dhcp4_config_stdout_has_one_line(tmp_path):
+    """AC #1: exactly one file path written to stdout."""
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("dhcp4:\n  subnets: []\n")
+    result = runner.invoke(app, ["--config", str(cfg), "--output-dir", str(tmp_path)])
+    lines = [line for line in result.stdout.splitlines() if line.strip()]
+    assert len(lines) == 1
+
+
+def test_valid_dhcp4_config_stderr_empty_on_success(tmp_path):
+    """AC #1: no content written to stderr on successful generation."""
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("dhcp4:\n  subnets: []\n")
+    result = runner.invoke(app, ["--config", str(cfg), "--output-dir", str(tmp_path)])
+    assert result.stderr == ""
+
+
+def test_overwrite_replaces_existing_file(tmp_path):
+    """AC #2: --overwrite silently replaces existing canonical file, exit 0."""
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("dhcp4:\n  subnets: []\n")
+    (tmp_path / "kea-dhcp4.conf").write_text("old content")
+    result = runner.invoke(
+        app, ["--config", str(cfg), "--output-dir", str(tmp_path), "--overwrite"]
+    )
+    assert result.exit_code == 0

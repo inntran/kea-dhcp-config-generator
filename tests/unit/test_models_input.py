@@ -8,6 +8,9 @@ Tests cover Story 1.3 acceptance criteria:
   AC5: hyphenated keys → snake_case Python attributes
   AC6: option_profiles reference stored as string
   AC7: neither dhcp4 nor dhcp6 → ExceptionGroup[ConfigError]
+
+Tests cover Story 2.4 acceptance criteria:
+  AC3: non-ASCII string in any user field → ExceptionGroup[ConfigError], exit 1
 """
 
 from io import StringIO
@@ -481,3 +484,51 @@ dhcp4:
 """)
     config = parse(raw)
     assert config.fingerprint_library_version is None
+
+
+# ---------------------------------------------------------------------------
+# Story 2.4 AC #3: ASCII-only string validation
+# ---------------------------------------------------------------------------
+
+
+def test_non_ascii_domain_name_raises_config_error():
+    """AC #3: non-ASCII domain-name → ExceptionGroup[ConfigError]."""
+    raw = _load("""
+dhcp4:
+  domain-name: "中国.cn"
+  subnets: []
+""")
+    with pytest.raises(ExceptionGroup) as exc_info:
+        parse(raw)
+    errors = exc_info.value.exceptions
+    assert any(isinstance(e, ConfigError) for e in errors)
+    assert any("ASCII" in e.message for e in errors if isinstance(e, ConfigError))
+
+
+def test_non_ascii_hostname_raises_config_error():
+    """AC #3: non-ASCII hostname in reservation → ExceptionGroup[ConfigError]."""
+    raw = _load("""
+dhcp4:
+  subnets:
+    - subnet: 10.0.1.0/24
+      reservations:
+        - hw-address: "aa:bb:cc:dd:ee:ff"
+          ip-address: "10.0.1.10"
+          hostname: "sérver.local"
+""")
+    with pytest.raises(ExceptionGroup) as exc_info:
+        parse(raw)
+    errors = exc_info.value.exceptions
+    assert any(isinstance(e, ConfigError) for e in errors)
+    assert any("ASCII" in e.message for e in errors if isinstance(e, ConfigError))
+
+
+def test_ascii_domain_name_accepted():
+    """AC #3: ASCII-only domain-name passes validation."""
+    raw = _load("""
+dhcp4:
+  domain-name: "example.com"
+  subnets: []
+""")
+    config = parse(raw)
+    assert config.dhcp4.domain_name == "example.com"
