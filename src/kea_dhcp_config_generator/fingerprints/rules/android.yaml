@@ -1,0 +1,27 @@
+- name: Android_12_14
+  test: "option[55].hex == 0x0103060f1a1c333a3b2b726c"
+  kea_version_min: "3.0"
+  kea_version_max: null
+  source: "DHCP PRL pattern validated from Android 12–14 devices"
+  validated_against: "3.0.2"
+
+- name: HuaweiAndroid
+  test: "substring(option[60].text, 4, 9) == ':android:' or substring(option[60].text, 5, 9) == ':android:' or substring(option[60].text, 6, 9) == ':android:'"
+  kea_version_min: "3.0"
+  kea_version_max: null
+  source: "Vendor class identifier (option 60) substring pattern for Huawei Android devices"
+  validated_against: "3.0.2"
+
+- name: VivoAndroid
+  test: "substring(option[60].text, 0, 7) == 'dhcpcd-'"
+  kea_version_min: "3.0"
+  kea_version_max: null
+  source: "Vendor class identifier (option 60) prefix for Vivo Android DHCP clients"
+  validated_against: "3.0.2"
+
+- name: OldAndroid
+  test: "substring(option[60].text, 0, 13) == 'android-dhcp-'"
+  kea_version_min: "3.0"
+  kea_version_max: null
+  source: "Vendor class identifier (option 60) prefix for legacy Android DHCP clients"
+  validated_against: "3.0.2"

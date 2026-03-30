@@ -1,0 +1,13 @@
+- name: HomeRouter
+  test: "option[55].hex == 0x0103060f2b2c2e2f2179f9 or option[55].hex == 0x0103060f2179f9 or option[55].hex == 0x0103060c0f1c2a2b3c8a"
+  kea_version_min: "3.0"
+  kea_version_max: null
+  source: "DHCP PRL patterns validated from consumer home routers"
+  validated_against: "3.0.2"
+
+- name: WRT
+  test: "option[55].hex == 0x0103060c0f1c2a79"
+  kea_version_min: "3.0"
+  kea_version_max: null
+  source: "DHCP PRL pattern validated from WRT-based router DHCP clients"
+  validated_against: "3.0.2"

@@ -1,0 +1,6 @@
+- name: macOS
+  test: "option[55].hex == 0x017903060f77fc5f2c2e or option[55].hex == 0x017903060f7277fc5f2c2e or option[55].hex == 0x017903060f6c7277fc5f2c2e"
+  kea_version_min: "3.0"
+  kea_version_max: null
+  source: "DHCP PRL patterns validated from macOS devices (covers multiple recent releases)"
+  validated_against: "3.0.2"

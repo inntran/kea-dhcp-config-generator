@@ -1,0 +1,6 @@
+- name: LocalMAC
+  test: "substring(hexstring(option[61].hex, ''), 3, 1) == '2' or substring(hexstring(option[61].hex, ''), 3, 1) == '6' or substring(hexstring(option[61].hex, ''), 3, 1) == 'a' or substring(hexstring(option[61].hex, ''), 3, 1) == 'e'"
+  kea_version_min: "3.0"
+  kea_version_max: null
+  source: "Detects locally administered MAC addresses via the LA bit in option 61 (Client Identifier)"
+  validated_against: "3.0.2"
