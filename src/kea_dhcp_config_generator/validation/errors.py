@@ -44,3 +44,18 @@ class ConfigError(Exception):
         if self.suggestion:
             return f"{base} (Suggestion: {self.suggestion})"
         return base
+
+
+@dataclass
+class ConfigWarning:
+    """Non-fatal configuration warning (version mismatch, graceful degradation).
+
+    Story 4.1 adds the full validation infrastructure (SubnetConfigError,
+    OptionDataError, FingerprintError, ValidationResult). This story adds only
+    ConfigWarning, which is needed by DHCPFingerprint for version pinning.
+    """
+
+    message: str
+    yaml_path: str          # dot-notation: "fingerprint_library_version"
+    line: int | None        # None when warning has no YAML source line
+    suggestion: str | None  # optional fix guidance

@@ -110,3 +110,63 @@ def test_file_order_android_before_windows(lib):
     assert min(android_indices) < min(windows_indices), (
         "android.yaml rules must appear before windows.yaml rules (alphabetical file order)"
     )
+
+
+# ---- Story 3.2 tests ----
+
+def test_global_config_has_fingerprint_library_version_field():
+    """AC #1: GlobalConfig.fingerprint_library_version is an optional string field."""
+    from kea_dhcp_config_generator.models.input import GlobalConfig
+    fields = GlobalConfig.model_fields
+    assert "fingerprint_library_version" in fields
+    field = fields["fingerprint_library_version"]
+    assert not field.is_required()  # optional
+
+
+def test_version_pinning_match_no_warnings():
+    """AC #2: matching version → no warnings on lib.warnings."""
+    import importlib.metadata
+    installed = importlib.metadata.version("kea-dhcp-config-generator")
+    lib_pinned = DHCPFingerprint(pinned_version=installed)
+    assert lib_pinned.warnings == []
+
+
+def test_version_pinning_mismatch_emits_warning():
+    """AC #3: mismatched version → one ConfigWarning on lib.warnings."""
+    lib_bad = DHCPFingerprint(pinned_version="9.9.9")
+    assert len(lib_bad.warnings) == 1
+    warning = lib_bad.warnings[0]
+    assert "9.9.9" in warning.message
+    assert warning.yaml_path == "fingerprint_library_version"
+
+
+def test_version_pinning_mismatch_message_contains_installed_version():
+    """AC #3: warning message includes both pinned and installed version strings."""
+    import importlib.metadata
+    installed = importlib.metadata.version("kea-dhcp-config-generator")
+    lib_bad = DHCPFingerprint(pinned_version="9.9.9")
+    assert installed in lib_bad.warnings[0].message
+
+
+def test_fuzzy_match_close_name_returns_suggestion(lib):
+    """AC #4: fuzzy_match on a near-miss name returns the close rule."""
+    result = lib.fuzzy_match("iOS_14_16")
+    assert "iOS_14_17" in result
+
+
+def test_fuzzy_match_transposition_typo(lib):
+    """AC #5: fuzzy_match catches character transposition typos."""
+    result = lib.fuzzy_match("Andriod_12_14")
+    assert "Android_12_14" in result
+
+
+def test_fuzzy_match_unrelated_returns_empty(lib):
+    """AC #6: fuzzy_match returns empty list for completely unrelated names."""
+    result = lib.fuzzy_match("CompletelyUnrelated")
+    assert result == []
+
+
+def test_fuzzy_match_returns_list(lib):
+    """Type contract: fuzzy_match always returns a list (never None)."""
+    result = lib.fuzzy_match("any_name")
+    assert isinstance(result, list)
