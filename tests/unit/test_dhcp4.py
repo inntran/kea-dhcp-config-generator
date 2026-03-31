@@ -13,6 +13,7 @@ Tests cover all 7 acceptance criteria:
 import pytest
 
 from kea_dhcp_config_generator.builders.dhcp4 import build
+from kea_dhcp_config_generator.fingerprints import DHCPFingerprint
 from kea_dhcp_config_generator.models.input import GlobalConfig
 
 # ---------------------------------------------------------------------------
@@ -825,5 +826,123 @@ def test_reservation_does_not_inherit_subnet_options():
     # Reservation must NOT inherit it
     reservation = subnet["reservations"][0]
     assert "option-data" not in reservation
+
+
+# ---------------------------------------------------------------------------
+# Story 3.3 — DHCPv4 Builder Integration with DHCPFingerprint (AC #1–#8)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def fp_lib() -> DHCPFingerprint:
+    """Shared DHCPFingerprint for Story 3.3 tests — loads once per module."""
+    return DHCPFingerprint()
+
+
+def _pool_with_class(class_name: str) -> dict:
+    """Minimal pool dict with a client-class."""
+    return {"range": "10.0.1.10 - 10.0.1.200", "client-class": class_name}
+
+
+def test_build_accepts_fingerprint_library_kwarg(fp_lib):
+    """AC #1: build() accepts fingerprint_library kwarg without TypeError."""
+    config = _cfg({"subnets": [_minimal_subnet(pools=[_pool_with_class("iOS_14_17")])]})
+    result = build(config, fingerprint_library=fp_lib)
+    assert "Dhcp4" in result
+
+
+def test_test_expression_class_emits_test_field(fp_lib):
+    """AC #2: test-expression rule → client-classes entry has 'test', no 'template-test'."""
+    config = _cfg({"subnets": [_minimal_subnet(pools=[_pool_with_class("iOS_14_17")])]})
+    result = build(config, fingerprint_library=fp_lib)
+    classes = result["Dhcp4"]["client-classes"]
+    ios_entry = next(e for e in classes if e["name"] == "iOS_14_17")
+    assert "test" in ios_entry
+    assert "template-test" not in ios_entry
+
+
+def test_template_test_class_emits_template_test_field(fp_lib):
+    """AC #3: template-test rule → client-classes entry has 'template-test', no 'test'."""
+    config = _cfg({"subnets": [_minimal_subnet(pools=[_pool_with_class("IoT_Generic")])]})
+    result = build(config, fingerprint_library=fp_lib)
+    classes = result["Dhcp4"]["client-classes"]
+    iot_entry = next(e for e in classes if e["name"] == "IoT_Generic")
+    assert "template-test" in iot_entry
+    assert "test" not in iot_entry
+
+
+def test_deduplication_across_subnets(fp_lib):
+    """AC #4: same class referenced in two subnets → one top-level entry."""
+    config = _cfg({
+        "subnets": [
+            {"subnet": "10.0.1.0/24", "pools": [_pool_with_class("Windows_10_11")]},
+            {"subnet": "10.0.2.0/24", "pools": [_pool_with_class("Windows_10_11")]},
+        ]
+    })
+    result = build(config, fingerprint_library=fp_lib)
+    classes = result["Dhcp4"]["client-classes"]
+    windows_entries = [e for e in classes if e["name"] == "Windows_10_11"]
+    assert len(windows_entries) == 1
+
+
+def test_class_order_first_occurrence_yaml_order(fp_lib):
+    """AC #5: classes appear in first-occurrence YAML order (iOS before Windows)."""
+    config = _cfg({
+        "subnets": [
+            {"subnet": "10.0.1.0/24", "pools": [_pool_with_class("iOS_14_17")]},
+            {"subnet": "10.0.2.0/24", "pools": [_pool_with_class("Windows_10_11")]},
+        ]
+    })
+    result = build(config, fingerprint_library=fp_lib)
+    names = [e["name"] for e in result["Dhcp4"]["client-classes"]]
+    assert names.index("iOS_14_17") < names.index("Windows_10_11")
+
+
+def test_pool_emits_list_form_not_singular_client_class(fp_lib):
+    """AC #6: pool entry uses "client-classes": [name] (list form, Kea 3.x);
+    the deprecated singular "client-class" field is never emitted on pools."""
+    config = _cfg({"subnets": [_minimal_subnet(pools=[_pool_with_class("Windows_10_11")])]})
+    result = build(config, fingerprint_library=fp_lib)
+    pool_entry = result["Dhcp4"]["subnet4"][0]["pools"][0]
+    assert pool_entry["client-classes"] == ["Windows_10_11"]
+    assert "client-class" not in pool_entry
+
+
+def test_custom_class_absent_from_library_no_top_level_entry(fp_lib):
+    """AC #7: custom class not in library → pool still has it; no top-level entry."""
+    config = _cfg({"subnets": [_minimal_subnet(pools=[_pool_with_class("MyCustomClass")])]})
+    result = build(config, fingerprint_library=fp_lib)
+    dhcp4 = result["Dhcp4"]
+    assert "client-classes" not in dhcp4
+    pool_entry = dhcp4["subnet4"][0]["pools"][0]
+    assert pool_entry["client-classes"] == ["MyCustomClass"]
+
+
+def test_no_client_classes_key_when_no_pool_has_client_class(fp_lib):
+    """AC #8: no pool with client-class → no client-classes key in Dhcp4."""
+    config = _cfg({
+        "subnets": [_minimal_subnet(pools=[{"range": "10.0.1.10 - 10.0.1.200"}])]
+    })
+    result = build(config, fingerprint_library=fp_lib)
+    assert "client-classes" not in result["Dhcp4"]
+
+
+def test_backward_compatibility_no_fingerprint_library():
+    """Backward compat: build(config) without fingerprint_library — no top-level client-classes;
+    pool client-classes list form still emitted (pre-existing Story 2.2 behavior)."""
+    config = _cfg({"subnets": [_minimal_subnet(pools=[_pool_with_class("iOS_14_17")])]})
+    result = build(config)  # no fingerprint_library kwarg
+    dhcp4 = result["Dhcp4"]
+    assert "client-classes" not in dhcp4
+    pool = dhcp4["subnet4"][0]["pools"][0]
+    assert pool["client-classes"] == ["iOS_14_17"]
+
+
+def test_key_order_client_classes_before_subnet4(fp_lib):
+    """Key ordering: client-classes appears before subnet4 in Dhcp4 dict."""
+    config = _cfg({"subnets": [_minimal_subnet(pools=[_pool_with_class("iOS_14_17")])]})
+    result = build(config, fingerprint_library=fp_lib)
+    keys = list(result["Dhcp4"].keys())
+    assert keys.index("client-classes") < keys.index("subnet4")
 
 

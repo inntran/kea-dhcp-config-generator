@@ -1,11 +1,12 @@
 """DHCPv4 JSON builder — assembles a Kea-ready Dhcp4 JSON dict.
 
 Public API:
-    build(config: GlobalConfig) -> dict
+    build(config: GlobalConfig, fingerprint_library: DHCPFingerprint | None = None) -> dict
         Returns {"Dhcp4": {...}} suitable for json.dumps(..., indent=2, ensure_ascii=False).
 
 Key ordering follows Kea documentation examples (not alphabetical):
-    Dhcp4 level:  valid-lifetime → renew-timer → rebind-timer → option-data → subnet4
+    Dhcp4 level:  valid-lifetime → renew-timer → rebind-timer → option-data
+                  → client-classes → subnet4
     Subnet level: id → subnet → valid-lifetime → renew-timer → rebind-timer → client-class
                   → option-data → pools → reservations
     Pool level:   pool → client-classes (only when set)
@@ -18,6 +19,7 @@ using merge-by-name semantics (most-specific wins).
 
 from kea_dhcp_config_generator.builders.options import merge_option_data
 from kea_dhcp_config_generator.builders.pools import calculate_pool_range, parse_pool_range
+from kea_dhcp_config_generator.fingerprints import DHCPFingerprint
 from kea_dhcp_config_generator.models.input import (
     Dhcp4Config,
     GlobalConfig,
@@ -27,11 +29,15 @@ from kea_dhcp_config_generator.models.input import (
 )
 
 
-def build(config: GlobalConfig) -> dict:
+def build(config: GlobalConfig, fingerprint_library: DHCPFingerprint | None = None) -> dict:
     """Assemble a Kea-ready Dhcp4 JSON dict from a validated GlobalConfig.
 
     Args:
         config: Fully validated GlobalConfig (from models.input.parse()).
+        fingerprint_library: Optional DHCPFingerprint instance. When provided,
+            pool client-class names found in the library are resolved to
+            top-level Kea client-classes entries (test or template-test).
+            Never instantiated internally — always passed as a dependency.
 
     Returns:
         dict with structure {"Dhcp4": {...}}.
@@ -59,8 +65,11 @@ def build(config: GlobalConfig) -> dict:
     if global_option_data:
         dhcp4_dict["option-data"] = global_option_data
 
-    # --- Subnet list ---
+    # --- Subnet list (client-classes immediately before subnet4, Kea-natural order) ---
     if dhcp4.subnets:
+        client_classes = _collect_client_classes(dhcp4, fingerprint_library)
+        if client_classes:
+            dhcp4_dict["client-classes"] = client_classes
         dhcp4_dict["subnet4"] = _build_subnet4(dhcp4)
 
     return {"Dhcp4": dhcp4_dict}
@@ -69,6 +78,47 @@ def build(config: GlobalConfig) -> dict:
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
+
+
+def _collect_client_classes(
+    dhcp4: Dhcp4Config,
+    fingerprint_library: DHCPFingerprint | None,
+) -> list[dict]:
+    """Build the top-level client-classes array for Kea Dhcp4 output.
+
+    Scans all pools in YAML order (subnets top-to-bottom, pools top-to-bottom).
+    For each pool.client_class:
+      - Deduplicates by name (first occurrence wins; subsequent occurrences skipped)
+      - Looks up the name in fingerprint_library
+      - If found: emits {"name": ..., "test": ...} or {"name": ..., "template-test": ...}
+      - If not found or no library: skips top-level entry
+        (bare name still appears in pool's client-classes list — unchanged)
+
+    Returns empty list if fingerprint_library is None or no pools have client_class.
+    """
+    if not fingerprint_library:
+        return []
+
+    seen: set[str] = set()
+    entries: list[dict] = []
+
+    for subnet in dhcp4.subnets:
+        for pool in (subnet.pools or []):
+            name = pool.client_class
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            rule = fingerprint_library.lookup(name)
+            if rule is None:
+                continue  # custom class: pool still has it; no top-level entry
+            entry: dict = {"name": name}
+            if "test" in rule:
+                entry["test"] = rule["test"]
+            else:
+                entry["template-test"] = rule["template-test"]
+            entries.append(entry)
+
+    return entries
 
 
 def _scalar_to_option_data(model: Dhcp4Config | SubnetV4Model) -> list[dict]:

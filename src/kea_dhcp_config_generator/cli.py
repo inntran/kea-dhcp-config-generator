@@ -6,6 +6,7 @@ import typer
 
 from kea_dhcp_config_generator import loader, writer
 from kea_dhcp_config_generator.builders import dhcp4 as dhcp4_builder
+from kea_dhcp_config_generator.fingerprints import DHCPFingerprint
 from kea_dhcp_config_generator.models import input as input_models
 from kea_dhcp_config_generator.validation.errors import (
     ConfigError,
@@ -79,7 +80,10 @@ def main(
     # stdout is reserved for generated file paths (one per line).
     try:
         if config_model.dhcp4 is not None:
-            built = dhcp4_builder.build(config_model)
+            lib = DHCPFingerprint(pinned_version=config_model.fingerprint_library_version)
+            for w in lib.warnings:
+                typer.echo(f"Warning: {w.message}", err=True)  # stderr; never stdout
+            built = dhcp4_builder.build(config_model, fingerprint_library=lib)
             output_path = writer.write(
                 built,
                 "dhcp4",
