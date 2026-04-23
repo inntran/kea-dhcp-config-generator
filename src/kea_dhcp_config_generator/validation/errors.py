@@ -4,7 +4,8 @@ The full ConfigError / ConfigWarning dataclass infrastructure is added in Story 
 This module is extended in-place; the KeaConfigError base class is stable.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
 
 class KeaConfigError(Exception):
@@ -47,6 +48,21 @@ class ConfigError(Exception):
 
 
 @dataclass
+class SubnetConfigError(ConfigError):
+    """Subnet-specific validation error (overlapping CIDRs, pool out of bounds, etc.)."""
+
+
+@dataclass
+class OptionDataError(ConfigError):
+    """Option-data validation error."""
+
+
+@dataclass
+class FingerprintError(ConfigError):
+    """Fingerprint rule name resolution error (unknown class, fuzzy match suggestion)."""
+
+
+@dataclass
 class ConfigWarning:
     """Non-fatal configuration warning (version mismatch, graceful degradation).
 
@@ -59,3 +75,20 @@ class ConfigWarning:
     yaml_path: str          # dot-notation: "fingerprint_library_version"
     line: int | None        # None when warning has no YAML source line
     suggestion: str | None  # optional fix guidance
+
+
+@dataclass
+class ValidationResult:
+    """Aggregated result of a validation pass.
+
+    is_valid is True iff errors is empty.
+    warnings is non-fatal; does not affect is_valid.
+    """
+
+    errors: list[ConfigError] = field(default_factory=list)
+    warnings: list[ConfigWarning] = field(default_factory=list)
+    validated_config: Any | None = None
+    is_valid: bool = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.is_valid = len(self.errors) == 0
