@@ -7,6 +7,7 @@ from pathlib import Path
 from ruamel.yaml.comments import CommentedMap
 
 from kea_dhcp_config_generator import loader
+from kea_dhcp_config_generator.fingerprints import DHCPFingerprint
 from kea_dhcp_config_generator.models import input as input_models
 from kea_dhcp_config_generator.validation import semantic as semantic_validation
 from kea_dhcp_config_generator.validation.errors import (
@@ -23,14 +24,21 @@ def _run_semantic_validators(
     config: input_models.GlobalConfig | None,
     raw: CommentedMap,
 ) -> tuple[list[ConfigError], list[ConfigWarning]]:
-    """Run semantic validation layers.
-
-    Story 4.2 wires subnet/pool/reservation checks. Classification checks
-    (warnings) are added in Story 4.3.
-    """
+    """Run semantic validation layers (subnet checks + classification checks)."""
     if config is None:
         return [], []
-    return list(semantic_validation.validate_semantic(config, raw)), []
+    errors: list[ConfigError] = list(semantic_validation.validate_semantic(config, raw))
+    warnings: list[ConfigWarning] = []
+    library: DHCPFingerprint | None = None
+    if config.dhcp4 is not None:
+        library = DHCPFingerprint(pinned_version=config.fingerprint_library_version)
+        warnings.extend(library.warnings)
+    class_errors, class_warnings = semantic_validation.validate_classification(
+        config, raw, library
+    )
+    errors.extend(class_errors)
+    warnings.extend(class_warnings)
+    return errors, warnings
 
 
 def _partition_exception_group(
@@ -114,6 +122,7 @@ def validate(
             )
             for warning in warnings
         )
+        warnings = []
 
     return ValidationResult(
         errors=errors,

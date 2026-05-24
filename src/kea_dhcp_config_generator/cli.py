@@ -11,6 +11,7 @@ from kea_dhcp_config_generator.models import input as input_models
 from kea_dhcp_config_generator.validation import semantic as semantic_validation
 from kea_dhcp_config_generator.validation.errors import (
     ConfigError,
+    ConfigWarning,
     KeaConfigError,
 )
 
@@ -32,6 +33,17 @@ def _format_error(error: ConfigError) -> str:
     return base
 
 
+def _format_warning(warning: ConfigWarning) -> str:
+    """Format a ConfigWarning for human-readable stderr output."""
+    if warning.line is not None:
+        base = f"Warning: Line {warning.line}: {warning.yaml_path} — {warning.message}"
+    else:
+        base = f"Warning: {warning.yaml_path} — {warning.message}"
+    if warning.suggestion:
+        base += f"\n  Suggestion: {warning.suggestion}"
+    return base
+
+
 @app.command()
 def main(
     config: Path = typer.Option(
@@ -50,6 +62,11 @@ def main(
         "--output-dir",
         hidden=True,
         help="Directory to write generated files (default: current directory).",
+    ),
+    strict: bool = typer.Option(
+        False,
+        "--strict",
+        help="Promote configuration warnings (e.g. no catch-all pool) to errors.",
     ),
 ) -> None:
     """Generate Kea DHCPv4/DHCPv6 JSON configuration from YAML."""
@@ -78,7 +95,41 @@ def main(
         raise typer.Exit(code=2) from None
 
     # Stage 2.5: Semantic validation — collect-all semantic errors → exit 1
-    semantic_errors = semantic_validation.validate_semantic(config_model, raw)
+    library: DHCPFingerprint | None = None
+    if config_model.dhcp4 is not None:
+        library = DHCPFingerprint(
+            pinned_version=config_model.fingerprint_library_version
+        )
+        for w in library.warnings:
+            if strict:
+                continue  # promoted below alongside classification warnings
+            typer.echo(_format_warning(w), err=True)
+
+    semantic_errors: list[ConfigError] = list(
+        semantic_validation.validate_semantic(config_model, raw)
+    )
+    class_errors, class_warnings = semantic_validation.validate_classification(
+        config_model, raw, library
+    )
+    semantic_errors.extend(class_errors)
+
+    if strict:
+        promoted_sources: list[ConfigWarning] = list(class_warnings)
+        if library is not None:
+            promoted_sources.extend(library.warnings)
+        semantic_errors.extend(
+            ConfigError(
+                message=w.message,
+                yaml_path=w.yaml_path,
+                line=w.line,
+                suggestion=w.suggestion,
+            )
+            for w in promoted_sources
+        )
+    else:
+        for w in class_warnings:
+            typer.echo(_format_warning(w), err=True)
+
     if semantic_errors:
         try:
             raise ExceptionGroup("Semantic validation failed", semantic_errors)
@@ -91,10 +142,8 @@ def main(
     # stdout is reserved for generated file paths (one per line).
     try:
         if config_model.dhcp4 is not None:
-            lib = DHCPFingerprint(pinned_version=config_model.fingerprint_library_version)
-            for w in lib.warnings:
-                typer.echo(f"Warning: {w.message}", err=True)  # stderr; never stdout
-            built = dhcp4_builder.build(config_model, fingerprint_library=lib)
+            assert library is not None  # built in Stage 2.5 when dhcp4 is set
+            built = dhcp4_builder.build(config_model, fingerprint_library=library)
             output_path = writer.write(
                 built,
                 "dhcp4",

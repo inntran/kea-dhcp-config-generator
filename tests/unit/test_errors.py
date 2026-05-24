@@ -250,7 +250,7 @@ def test_validate_strict_true_promotes_warnings_to_errors(
     assert result.is_valid is False
     assert len(result.errors) == 1
     assert result.errors[0].message == "deprecated fingerprint"
-    assert len(result.warnings) == 1
+    assert result.warnings == []
 
 
 def test_validate_wraps_unexpected_non_configerror(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -305,3 +305,72 @@ def test_validate_skips_semantic_when_structural_fails(tmp_path: Path):
     assert result.is_valid is False
     # All errors are structural; none should be a SubnetConfigError from the semantic pass.
     assert not any(isinstance(e, SubnetConfigError) for e in result.errors)
+
+
+# ---- Story 4.3 tests ----
+
+
+def test_validate_no_catch_all_emits_warning_only(tmp_path: Path):
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(
+        "dhcp4:\n"
+        "  subnets:\n"
+        "    - subnet: 10.0.1.0/24\n"
+        "      pools:\n"
+        "        - range: 10.0.1.10 - 10.0.1.50\n"
+        "          client-class: Android_12_14\n"
+        "        - range: 10.0.1.60 - 10.0.1.100\n"
+        "          client-class: macOS\n"
+    )
+    result = validate(cfg)
+    assert result.is_valid is True
+    assert len(result.warnings) == 1
+    assert result.errors == []
+
+
+def test_validate_strict_promotes_catch_all_warning_to_error(tmp_path: Path):
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(
+        "dhcp4:\n"
+        "  subnets:\n"
+        "    - subnet: 10.0.1.0/24\n"
+        "      pools:\n"
+        "        - range: 10.0.1.10 - 10.0.1.50\n"
+        "          client-class: Android_12_14\n"
+        "        - range: 10.0.1.60 - 10.0.1.100\n"
+        "          client-class: macOS\n"
+    )
+    result = validate(cfg, strict=True)
+    assert result.is_valid is False
+    assert len(result.errors) >= 1
+    assert any("catch-all" in e.message for e in result.errors)
+
+
+def test_validate_unknown_class_yields_fingerprint_error(tmp_path: Path):
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(
+        "dhcp4:\n"
+        "  subnets:\n"
+        "    - subnet: 10.0.1.0/24\n"
+        "      pools:\n"
+        "        - range: auto\n"
+        "          client-class: zZqXX_no_match_here\n"
+    )
+    result = validate(cfg)
+    assert result.is_valid is False
+    assert any(isinstance(e, FingerprintError) for e in result.errors)
+    # Errors are not affected by strict; behavior identical under strict=True.
+    result_strict = validate(cfg, strict=True)
+    assert result_strict.is_valid is False
+    assert any(isinstance(e, FingerprintError) for e in result_strict.errors)
+
+
+def test_validate_surfaces_version_mismatch_warning(tmp_path: Path):
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(
+        "fingerprint_library_version: \"0.0.0-test-mismatch\"\n"
+        "dhcp4:\n"
+        "  subnets: []\n"
+    )
+    result = validate(cfg)
+    assert any("version mismatch" in w.message for w in result.warnings)

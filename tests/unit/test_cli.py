@@ -229,3 +229,85 @@ def test_semantic_overlap_exits_one(tmp_path):
     # No output file written.
     assert not (tmp_path / "kea-dhcp4.conf").exists()
     assert not any(p.name.startswith("kea-dhcp4-") for p in tmp_path.iterdir())
+
+
+# ---------------------------------------------------------------------------
+# Story 4.3: --strict flag, classification errors & catch-all warnings
+# ---------------------------------------------------------------------------
+
+
+_NO_CATCH_ALL_CFG = (
+    "dhcp4:\n"
+    "  subnets:\n"
+    "    - subnet: 10.0.1.0/24\n"
+    "      pools:\n"
+    "        - range: 10.0.1.10 - 10.0.1.50\n"
+    "          client-class: Android_12_14\n"
+    "        - range: 10.0.1.60 - 10.0.1.100\n"
+    "          client-class: macOS\n"
+)
+
+
+def test_strict_promotes_catch_all_warning_to_error(tmp_path):
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(_NO_CATCH_ALL_CFG)
+    result = runner.invoke(
+        app,
+        ["--config", str(cfg), "--output-dir", str(tmp_path), "--strict"],
+    )
+    assert result.exit_code == 1
+    assert "Error:" in result.stderr
+    assert "catch-all" in result.stderr
+    assert result.stdout == ""
+    assert not (tmp_path / "kea-dhcp4.conf").exists()
+
+
+def test_no_strict_emits_catch_all_warning_but_succeeds(tmp_path):
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(_NO_CATCH_ALL_CFG)
+    result = runner.invoke(
+        app,
+        ["--config", str(cfg), "--output-dir", str(tmp_path), "--overwrite"],
+    )
+    assert result.exit_code == 0
+    assert "Warning:" in result.stderr
+    assert "catch-all" in result.stderr
+    assert (tmp_path / "kea-dhcp4.conf").exists()
+
+
+def test_unknown_class_exits_one(tmp_path):
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(
+        "dhcp4:\n"
+        "  subnets:\n"
+        "    - subnet: 10.0.1.0/24\n"
+        "      pools:\n"
+        "        - range: auto\n"
+        "          client-class: zZqXX_no_match_here\n"
+    )
+    result = runner.invoke(app, ["--config", str(cfg), "--output-dir", str(tmp_path)])
+    assert result.exit_code == 1
+    assert "Error:" in result.stderr
+    assert "unknown client-class" in result.stderr
+    assert result.stdout == ""
+
+
+def test_strict_does_not_swallow_real_errors(tmp_path):
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(
+        "dhcp4:\n"
+        "  subnets:\n"
+        "    - subnet: 10.0.1.0/24\n"
+        "      pools:\n"
+        "        - range: 10.0.1.10 - 10.0.1.50\n"
+        "          client-class: zZqXX_no_match_here\n"
+        "        - range: 10.0.1.60 - 10.0.1.100\n"
+        "          client-class: macOS\n"
+    )
+    result = runner.invoke(
+        app,
+        ["--config", str(cfg), "--output-dir", str(tmp_path), "--strict"],
+    )
+    assert result.exit_code == 1
+    assert "unknown client-class" in result.stderr
+    assert "catch-all" in result.stderr
