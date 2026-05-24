@@ -202,7 +202,7 @@ def test_validate_strict_false_keeps_warnings_non_fatal(
     monkeypatch.setattr(
         api,
         "_run_semantic_validators",
-        lambda: (
+        lambda _config, _raw: (
             [],
             [
                 ConfigWarning(
@@ -221,6 +221,7 @@ def test_validate_strict_false_keeps_warnings_non_fatal(
     assert len(result.warnings) == 1
 
 
+
 def test_validate_strict_true_promotes_warnings_to_errors(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
@@ -232,7 +233,7 @@ def test_validate_strict_true_promotes_warnings_to_errors(
     monkeypatch.setattr(
         api,
         "_run_semantic_validators",
-        lambda: (
+        lambda _config, _raw: (
             [],
             [
                 ConfigWarning(
@@ -271,3 +272,36 @@ def test_validate_wraps_unexpected_non_configerror(tmp_path: Path, monkeypatch: 
 
     with pytest.raises(KeaConfigError, match="Unexpected validation failure"):
         validate(cfg)
+
+
+# ---- Story 4.2 tests ----
+
+
+def test_validate_surfaces_semantic_errors(tmp_path: Path):
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(
+        "dhcp4:\n"
+        "  subnets:\n"
+        "    - subnet: 10.0.4.0/23\n"
+        "    - subnet: 10.0.4.0/24\n"
+    )
+    result = validate(cfg)
+    assert result.is_valid is False
+    assert any(isinstance(e, SubnetConfigError) for e in result.errors)
+    assert result.warnings == []
+
+
+def test_validate_skips_semantic_when_structural_fails(tmp_path: Path):
+    """Structural failure leaves validated_config=None and skips semantic checks."""
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(
+        "dhcp4:\n"
+        "  valid-lifetime: INVALID\n"
+        "  subnets:\n"
+        "    - subnet: 10.0.4.0/23\n"
+        "    - subnet: 10.0.4.0/24\n"  # would overlap, but semantic should not run
+    )
+    result = validate(cfg)
+    assert result.is_valid is False
+    # All errors are structural; none should be a SubnetConfigError from the semantic pass.
+    assert not any(isinstance(e, SubnetConfigError) for e in result.errors)

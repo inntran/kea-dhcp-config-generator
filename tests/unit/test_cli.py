@@ -205,3 +205,27 @@ def test_overwrite_replaces_existing_file(tmp_path):
         app, ["--config", str(cfg), "--output-dir", str(tmp_path), "--overwrite"]
     )
     assert result.exit_code == 0
+
+
+# ---------------------------------------------------------------------------
+# Story 4.2: Semantic validation errors → stderr, exit 1, no output file
+# ---------------------------------------------------------------------------
+
+
+def test_semantic_overlap_exits_one(tmp_path):
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(
+        "dhcp4:\n"
+        "  subnets:\n"
+        "    - subnet: 10.0.4.0/23\n"
+        "    - subnet: 10.0.4.0/24\n"
+    )
+    result = runner.invoke(app, ["--config", str(cfg), "--output-dir", str(tmp_path)])
+    assert result.exit_code == 1
+    assert "Error: Line" in result.stderr
+    assert "10.0.4.0/23" in result.stderr
+    assert "10.0.4.0/24" in result.stderr
+    assert result.stdout == ""
+    # No output file written.
+    assert not (tmp_path / "kea-dhcp4.conf").exists()
+    assert not any(p.name.startswith("kea-dhcp4-") for p in tmp_path.iterdir())

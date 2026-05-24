@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ruamel.yaml.comments import CommentedMap
+
 from kea_dhcp_config_generator import loader
 from kea_dhcp_config_generator.models import input as input_models
+from kea_dhcp_config_generator.validation import semantic as semantic_validation
 from kea_dhcp_config_generator.validation.errors import (
     ConfigError,
     ConfigWarning,
@@ -16,14 +19,18 @@ from kea_dhcp_config_generator.validation.errors import (
 __version__ = "0.1.0"
 
 
-def _run_semantic_validators() -> tuple[list[ConfigError], list[ConfigWarning]]:
+def _run_semantic_validators(
+    config: input_models.GlobalConfig | None,
+    raw: CommentedMap,
+) -> tuple[list[ConfigError], list[ConfigWarning]]:
     """Run semantic validation layers.
 
-    Story 4.1 only includes structural validation, so this currently returns no
-    additional diagnostics. Later stories extend this to emit semantic errors
-    and warnings.
+    Story 4.2 wires subnet/pool/reservation checks. Classification checks
+    (warnings) are added in Story 4.3.
     """
-    return [], []
+    if config is None:
+        return [], []
+    return list(semantic_validation.validate_semantic(config, raw)), []
 
 
 def _partition_exception_group(
@@ -93,7 +100,7 @@ def validate(
             path=str(config_path),
         ) from eg
 
-    semantic_errors, semantic_warnings = _run_semantic_validators()
+    semantic_errors, semantic_warnings = _run_semantic_validators(validated_config, raw)
     errors.extend(semantic_errors)
     warnings.extend(semantic_warnings)
 

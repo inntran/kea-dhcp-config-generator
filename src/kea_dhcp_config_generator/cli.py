@@ -8,6 +8,7 @@ from kea_dhcp_config_generator import loader, writer
 from kea_dhcp_config_generator.builders import dhcp4 as dhcp4_builder
 from kea_dhcp_config_generator.fingerprints import DHCPFingerprint
 from kea_dhcp_config_generator.models import input as input_models
+from kea_dhcp_config_generator.validation import semantic as semantic_validation
 from kea_dhcp_config_generator.validation.errors import (
     ConfigError,
     KeaConfigError,
@@ -75,6 +76,16 @@ def main(
     except Exception as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=2) from None
+
+    # Stage 2.5: Semantic validation — collect-all semantic errors → exit 1
+    semantic_errors = semantic_validation.validate_semantic(config_model, raw)
+    if semantic_errors:
+        try:
+            raise ExceptionGroup("Semantic validation failed", semantic_errors)
+        except* ConfigError as eg:
+            for error in eg.exceptions:
+                typer.echo(_format_error(error), err=True)
+            raise typer.Exit(code=1) from None
 
     # Stage 3: Generation — DHCPv4 config build + output file write
     # stdout is reserved for generated file paths (one per line).
