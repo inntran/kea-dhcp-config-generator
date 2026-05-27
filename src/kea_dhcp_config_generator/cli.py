@@ -8,7 +8,12 @@ from kea_dhcp_config_generator import loader, writer
 from kea_dhcp_config_generator.builders import dhcp4 as dhcp4_builder
 from kea_dhcp_config_generator.fingerprints import DHCPFingerprint
 from kea_dhcp_config_generator.models import input as input_models
-from kea_dhcp_config_generator.validation import semantic as semantic_validation
+from kea_dhcp_config_generator.validation import (
+    output_schema,
+)
+from kea_dhcp_config_generator.validation import (
+    semantic as semantic_validation,
+)
 from kea_dhcp_config_generator.validation.errors import (
     ConfigError,
     ConfigWarning,
@@ -138,19 +143,51 @@ def main(
                 typer.echo(_format_error(error), err=True)
             raise typer.Exit(code=1) from None
 
-    # Stage 3: Generation — DHCPv4 config build + output file write
-    # stdout is reserved for generated file paths (one per line).
+    # Stage 3: Generation — build all → schema-validate all → write all.
+    # stdout is reserved for generated file paths (one per line). No file is
+    # written if any built dict fails output-schema validation (collect-all
+    # across protocols before writing).
     try:
-        if config_model.dhcp4 is not None:
-            assert library is not None  # built in Stage 2.5 when dhcp4 is set
-            built = dhcp4_builder.build(config_model, fingerprint_library=library)
-            output_path = writer.write(
-                built,
-                "dhcp4",
-                output_dir,
-                overwrite=overwrite,
-            )
-            typer.echo(str(output_path))  # stdout: generated file path
+        try:
+            built_outputs: list[tuple[dict, str]] = []
+            if config_model.dhcp4 is not None:
+                assert library is not None  # built in Stage 2.5 when dhcp4 is set
+                built_outputs.append(
+                    (dhcp4_builder.build(config_model, fingerprint_library=library), "dhcp4")
+                )
+            # Epic 5 will append (dhcp6_builder.build(...), "dhcp6") here.
+
+            schema_errors: list[ConfigError] = []
+            for built, protocol in built_outputs:
+                try:
+                    if protocol == "dhcp4":
+                        output_schema.validate_dhcp4(built)
+                    elif protocol == "dhcp6":
+                        output_schema.validate_dhcp6(built)
+                    else:
+                        raise ConfigError(
+                            message=f"Unsupported output protocol for schema validation: {protocol}",
+                            yaml_path="protocol",
+                            line=None,
+                            suggestion=None,
+                        )
+                except ConfigError as exc:
+                    schema_errors.append(exc)
+            if schema_errors:
+                raise ExceptionGroup("Output schema validation failed", schema_errors)
+
+            for built, protocol in built_outputs:
+                output_path = writer.write(
+                    built,
+                    protocol,
+                    output_dir,
+                    overwrite=overwrite,
+                )
+                typer.echo(str(output_path))  # stdout: generated file path
+        except* ConfigError as eg:
+            for error in eg.exceptions:
+                typer.echo(_format_error(error), err=True)
+            raise typer.Exit(code=1) from None
     except typer.Exit:
         raise
     except Exception as exc:

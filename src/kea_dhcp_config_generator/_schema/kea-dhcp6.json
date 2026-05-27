@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kea-dhcp-config-generator/_schema/kea-dhcp6.json",
+  "title": "Kea DHCPv6 configuration (stub, 3.0.x)",
+  "description": "Stub schema. DHCPv6 builder lands in Epic 5 (Story 5.2); this file exists so importlib.resources access succeeds today and validate_dhcp6() is callable. Replace with a partial schema modeled on builders/dhcp6.py output when Epic 5 ships.",
+  "type": "object",
+  "additionalProperties": true
+}

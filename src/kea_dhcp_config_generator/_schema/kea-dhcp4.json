@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kea-dhcp-config-generator/_schema/kea-dhcp4.json",
+  "title": "Kea DHCPv4 configuration (partial, 3.0.x)",
+  "description": "Partial JSON Schema covering the subset of Kea DHCPv4 keys emitted by builders/dhcp4.py. Tight types on known keys; additionalProperties:true elsewhere for forward-compatibility. Pinned to Kea 3.0.2. Story 8.3 will replace with an upstream-derived schema.",
+  "type": "object",
+  "required": ["Dhcp4"],
+  "additionalProperties": true,
+  "properties": {
+    "Dhcp4": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "valid-lifetime": { "type": "integer", "minimum": 0 },
+        "renew-timer": { "type": "integer", "minimum": 0 },
+        "rebind-timer": { "type": "integer", "minimum": 0 },
+        "option-data": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/optionDataEntry" }
+        },
+        "client-classes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/clientClassEntry" }
+        },
+        "subnet4": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/subnet4Entry" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "optionDataEntry": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "data": { "type": "string" },
+        "code": { "type": "integer", "minimum": 0 },
+        "space": { "type": "string" },
+        "csv-format": { "type": "boolean" },
+        "always-send": { "type": "boolean" },
+        "never-send": { "type": "boolean" }
+      }
+    },
+    "clientClassEntry": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "test": { "type": "string" },
+        "template-test": { "type": "string" },
+        "only-if-required": { "type": "boolean" },
+        "option-data": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/optionDataEntry" }
+        }
+      }
+    },
+    "subnet4Entry": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["subnet"],
+      "properties": {
+        "id": { "type": "integer", "minimum": 1 },
+        "subnet": { "type": "string", "minLength": 1 },
+        "valid-lifetime": { "type": "integer", "minimum": 0 },
+        "renew-timer": { "type": "integer", "minimum": 0 },
+        "rebind-timer": { "type": "integer", "minimum": 0 },
+        "client-class": { "type": "string", "minLength": 1 },
+        "interface": { "type": "string" },
+        "option-data": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/optionDataEntry" }
+        },
+        "pools": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/poolEntry" }
+        },
+        "reservations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/reservationEntry" }
+        }
+      }
+    },
+    "poolEntry": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["pool"],
+      "properties": {
+        "pool": { "type": "string", "minLength": 1 },
+        "client-classes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "option-data": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/optionDataEntry" }
+        }
+      }
+    },
+    "reservationEntry": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["ip-address"],
+      "properties": {
+        "hw-address": { "type": "string", "minLength": 1 },
+        "client-id": { "type": "string" },
+        "duid": { "type": "string" },
+        "ip-address": { "type": "string", "minLength": 1 },
+        "hostname": { "type": "string" },
+        "option-data": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/optionDataEntry" }
+        }
+      }
+    }
+  }
+}

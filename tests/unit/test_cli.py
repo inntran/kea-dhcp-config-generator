@@ -1,5 +1,6 @@
 """Unit tests for cli.py — I/O contract, exit codes, and error routing."""
 
+import pytest
 from typer.testing import CliRunner
 
 from kea_dhcp_config_generator.cli import app
@@ -311,3 +312,56 @@ def test_strict_does_not_swallow_real_errors(tmp_path):
     assert result.exit_code == 1
     assert "unknown client-class" in result.stderr
     assert "catch-all" in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# Story 4.4: Output-schema validation — exit 1 on schema failure, no file written
+# ---------------------------------------------------------------------------
+
+
+def test_output_schema_failure_exits_one_and_writes_no_file(tmp_path, monkeypatch):
+    """AC #7: a builder bug producing schema-invalid output blocks the write."""
+    from kea_dhcp_config_generator import cli as cli_module
+
+    real_build = cli_module.dhcp4_builder.build
+
+    def broken_build(*args, **kwargs):
+        result = real_build(*args, **kwargs)
+        result["Dhcp4"]["valid-lifetime"] = "forever"  # schema violation
+        return result
+
+    monkeypatch.setattr(cli_module.dhcp4_builder, "build", broken_build)
+
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("dhcp4:\n  subnets: []\n")
+    result = runner.invoke(
+        app, ["--config", str(cfg), "--output-dir", str(tmp_path), "--overwrite"]
+    )
+    assert result.exit_code == 1
+    assert "Error:" in result.stderr
+    assert "valid-lifetime" in result.stderr
+    assert result.stdout == ""
+    assert not (tmp_path / "kea-dhcp4.conf").exists()
+    assert not any(p.name.startswith("kea-dhcp4-") for p in tmp_path.iterdir())
+
+
+def test_output_schema_happy_path_unchanged(tmp_path):
+    """Regression: valid config still produces a file (schema validation is transparent)."""
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(
+        "dhcp4:\n"
+        "  subnets:\n"
+        "    - subnet: 10.0.1.0/24\n"
+        "      pools:\n"
+        "        - range: 10.0.1.10 - 10.0.1.50\n"
+    )
+    result = runner.invoke(
+        app, ["--config", str(cfg), "--output-dir", str(tmp_path), "--overwrite"]
+    )
+    assert result.exit_code == 0
+    assert (tmp_path / "kea-dhcp4.conf").exists()
+
+
+@pytest.mark.skip(reason="DHCPv6 builder lands in Epic 5 (Story 5.2)")
+def test_output_schema_collect_all_across_protocols(tmp_path):
+    """AC #8 (deferred): when both protocols build, schema errors from both surface in one run."""
