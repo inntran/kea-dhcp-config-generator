@@ -206,6 +206,12 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
+# Generated Kea config outputs (CLI writes these to cwd by default)
+kea-dhcp[46]-*.conf
+
+# Local-only reference material (user's production Kea client-class source of truth)
+reference/
+
 # BMAD generated output
 _bmad-output/
 
