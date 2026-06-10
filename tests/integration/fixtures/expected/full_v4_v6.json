@@ -25,6 +25,10 @@
       {
         "name": "Android_12_14",
         "test": "option[55].hex == 0x0103060f1a1c333a3b2b726c"
+      },
+      {
+        "name": "CatchAll_10",
+        "test": "not member('Android_12_14')"
       }
     ],
     "subnet4": [
@@ -50,7 +54,10 @@
             ]
           },
           {
-            "pool": "10.0.1.60 - 10.0.1.100"
+            "pool": "10.0.1.60 - 10.0.1.100",
+            "client-classes": [
+              "CatchAll_10"
+            ]
           }
         ],
         "reservations": [

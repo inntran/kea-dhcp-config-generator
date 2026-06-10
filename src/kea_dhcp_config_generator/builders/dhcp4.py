@@ -72,9 +72,15 @@ def build(config: GlobalConfig, fingerprint_library: DHCPFingerprint | None = No
     # --- Subnet list (client-classes immediately before subnet4, Kea-natural order) ---
     if dhcp4.subnets:
         client_classes = _collect_client_classes(dhcp4, fingerprint_library)
-        if client_classes:
-            dhcp4_dict["client-classes"] = client_classes
-        dhcp4_dict["subnet4"] = _build_subnet4(dhcp4, config.option_profiles)
+        subnet4, catchall_classes = _build_subnet4(dhcp4, config.option_profiles)
+        # Generated CatchAll classes use `not member(<device class>)`, so they must
+        # be evaluated AFTER the device classes — append them last. They are emitted
+        # even when no device class resolved to a library rule (e.g. all-custom
+        # guards), so client-classes may exist solely because of CatchAll entries.
+        all_classes = client_classes + catchall_classes
+        if all_classes:
+            dhcp4_dict["client-classes"] = all_classes
+        dhcp4_dict["subnet4"] = subnet4
 
     return {"Dhcp4": dhcp4_dict}
 
@@ -231,11 +237,86 @@ def _build_reservation_entry(reservation: HostReservationV4Model) -> dict:
     return entry
 
 
+def _subnet_used_pool_classes(subnet: SubnetV4Model) -> list[str]:
+    """Distinct pool-guard class names in a subnet, in first-encounter YAML order.
+
+    Custom (non-library) names are included — they are still classes a catch-all
+    must exclude. The subnet-level client-class selector is intentionally excluded;
+    only pool guards participate in pool-level catch-all coverage.
+    """
+    seen: set[str] = set()
+    used: list[str] = []
+    for pool in subnet.pools or []:
+        name = pool.client_class
+        if name and name not in seen:
+            seen.add(name)
+            used.append(name)
+    return used
+
+
+def _make_catchall_test(used_classes: list[str]) -> str:
+    """Build the CatchAll test expression: `not member('A') and not member('B')`.
+
+    Mirrors the Kea KB catch-all pattern (understanding-client-classification.md):
+    the synthesized class matches exactly the clients that belong to none of the
+    subnet's guarded classes.
+
+    Class names are embedded inside single-quoted Kea expression string literals.
+    Kea's eval lexer string rule is `'[^'\n]*'` with NO escape mechanism, so a
+    name containing a single quote or newline cannot be represented and would
+    produce an unparseable config. Reject such names with a clear error rather
+    than emit broken output.
+    """
+    for name in used_classes:
+        if "'" in name or "\n" in name:
+            raise KeaConfigError(
+                f"client-class name {name!r} cannot be used in a generated catch-all "
+                "expression: Kea class-expression string literals cannot contain a "
+                "single quote or newline. Rename the class."
+            )
+    return " and ".join(f"not member('{name}')" for name in used_classes)
+
+
+def _referenced_class_names(dhcp4: Dhcp4Config) -> set[str]:
+    """Every client-class name the user references anywhere in the dhcp4 config.
+
+    Used to keep generated CatchAll names from colliding with a user's own class
+    (e.g. a custom class literally named `CatchAll_1`), which would otherwise
+    rebind the user's pool selector to the synthesized `not member(...)` class.
+    """
+    names: set[str] = set()
+    for subnet in dhcp4.subnets:
+        if subnet.client_class:
+            names.add(subnet.client_class)
+        for pool in subnet.pools or []:
+            if pool.client_class:
+                names.add(pool.client_class)
+    return names
+
+
+def _catchall_name(assigned_id: int | str, referenced: set[str]) -> str:
+    """Return the reserved CatchAll class name for a subnet: `CatchAll_<id>`.
+
+    `CatchAll_<id>` is a reserved name the builder owns. The subnet id makes it
+    unique across subnets (Kea's client-class namespace is global). If the user
+    has manually defined a class with this exact reserved name, reject the config
+    rather than silently rebinding their selector to the generated class.
+    """
+    name = f"CatchAll_{assigned_id}"
+    if name in referenced:
+        raise KeaConfigError(
+            f"client-class name {name!r} is reserved: the tool generates a "
+            f"catch-all class named {name!r} for subnet id {assigned_id}. "
+            "Rename your class."
+        )
+    return name
+
+
 def _build_subnet4(
     dhcp4: Dhcp4Config,
     option_profiles: dict[str, OptionProfileModel],
-) -> list[dict]:
-    """Build the subnet4 list.
+) -> tuple[list[dict], list[dict]]:
+    """Build the subnet4 list and any generated per-subnet CatchAll classes.
 
     Subnet ID rules (all-or-none):
         - If ANY subnet has an explicit id, ALL subnets must have explicit IDs.
@@ -243,9 +324,21 @@ def _build_subnet4(
         - If NO subnet has an explicit id, IDs are auto-assigned sequentially
           from 1 in YAML order.
 
+    CatchAll generation (DHCPv4): when a subnet has both class-restricted pools
+    and at least one unguarded pool, a per-subnet `CatchAll_<id>` class is
+    synthesized with test `not member(<each used class>)` and attached to the
+    formerly-unguarded pool(s). This stops the catch-all pool from also serving
+    clients that match a restricted class (Kea KB
+    understanding-client-classification.md:188-235). The generated class dicts are
+    returned for the caller to append AFTER the device classes (member() requires
+    its referents to be evaluated first).
+
     Subnet key order (Kea-natural):
         id → subnet → valid-lifetime → renew-timer → rebind-timer → client-classes
         → option-data → pools → reservations
+
+    Returns:
+        (subnet4_list, catchall_class_dicts)
     """
     # Validate all-or-none ID consistency.
     # If any subnet has an explicit id, all must — mixing is not allowed because
@@ -261,7 +354,12 @@ def _build_subnet4(
             )
 
     subnets: list[dict] = []
+    catchall_classes: list[dict] = []
     next_id = 1
+    # Names the user references anywhere — used to reject a config that manually
+    # uses a reserved `CatchAll_<id>` name (which the builder owns) rather than
+    # silently rebinding the user's selector to the generated class.
+    referenced_class_names = _referenced_class_names(dhcp4)
 
     for subnet in dhcp4.subnets:
         profile: OptionProfileModel | None = None
@@ -273,6 +371,18 @@ def _build_subnet4(
         else:
             assigned_id = next_id
             next_id += 1
+
+        # Decide whether this subnet qualifies for a generated CatchAll: it must
+        # have at least one guarded pool AND at least one unguarded pool. The
+        # unguarded pool(s) then get guarded by the synthesized CatchAll class.
+        used_classes = _subnet_used_pool_classes(subnet)
+        has_unguarded_pool = any(not pool.client_class for pool in (subnet.pools or []))
+        catchall_name: str | None = None
+        if used_classes and has_unguarded_pool:
+            catchall_name = _catchall_name(assigned_id, referenced_class_names)
+            catchall_classes.append(
+                {"name": catchall_name, "test": _make_catchall_test(used_classes)}
+            )
 
         subnet_dict: dict = {
             "id": assigned_id,
@@ -315,9 +425,17 @@ def _build_subnet4(
         if subnet_option_data:
             subnet_dict["option-data"] = subnet_option_data
 
-        # Pools
+        # Pools. When a CatchAll class was synthesized for this subnet, attach it
+        # to each unguarded pool so the catch-all range serves only unmatched
+        # clients (Kea evaluates the generated `not member(...)` test).
         if subnet.pools:
-            subnet_dict["pools"] = [_build_pool_entry(pool, subnet.subnet) for pool in subnet.pools]
+            pool_entries: list[dict] = []
+            for pool in subnet.pools:
+                entry = _build_pool_entry(pool, subnet.subnet)
+                if catchall_name is not None and not pool.client_class:
+                    entry["client-classes"] = [catchall_name]
+                pool_entries.append(entry)
+            subnet_dict["pools"] = pool_entries
 
         # Reservations (after pools, Kea-natural order)
         if subnet.reservations:
@@ -325,4 +443,4 @@ def _build_subnet4(
 
         subnets.append(subnet_dict)
 
-    return subnets
+    return subnets, catchall_classes

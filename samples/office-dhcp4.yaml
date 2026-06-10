@@ -28,7 +28,11 @@ dhcp4:
         - range: 10.0.10.50 - 10.0.10.99
           client-class: iOS_14_17
         # A catch-all pool (no client-class) so unmatched clients still get a
-        # lease. `skip-start` keeps the first 10 host addresses free.
+        # lease. Because this subnet also has a class-restricted pool, the tool
+        # auto-generates a `CatchAll_<id>` class (test: not member(<each used
+        # class>)) and guards this pool with it, so it serves only clients that
+        # match none of the restricted classes. `skip-start` keeps the first 10
+        # host addresses free.
         - range: auto
           skip-start: 10
       reservations:

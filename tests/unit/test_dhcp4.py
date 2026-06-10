@@ -10,6 +10,8 @@ Tests cover all 7 acceptance criteria:
     AC #7 — key order matches Kea documentation natural ordering
 """
 
+import json
+
 import pytest
 
 from kea_dhcp_config_generator.builders.dhcp4 import build
@@ -477,7 +479,8 @@ def test_pool_without_client_class_has_no_client_classes_key():
 
 
 def test_multiple_pools_mixed_client_class():
-    """AC #6: client-classes appears only on pools that have client-class set."""
+    """A guarded pool keeps its class; the unguarded pool is auto-guarded by the
+    generated per-subnet CatchAll so it no longer serves matched clients."""
     config = _cfg(
         {
             "subnets": [
@@ -495,7 +498,8 @@ def test_multiple_pools_mixed_client_class():
     pools = result["Dhcp4"]["subnet4"][0]["pools"]
 
     assert pools[0]["client-classes"] == ["Windows_11"]
-    assert "client-classes" not in pools[1]
+    # The formerly-unguarded pool is now guarded by the synthesized CatchAll class.
+    assert pools[1]["client-classes"] == ["CatchAll_1"]
 
 
 # ---------------------------------------------------------------------------
@@ -1147,6 +1151,226 @@ def test_subnet_client_class_never_emits_deprecated_singular_key():
     subnet = build(config)["Dhcp4"]["subnet4"][0]
     assert subnet["client-classes"] == ["CableModem"]
     assert "client-class" not in subnet
+
+
+# ---------------------------------------------------------------------------
+# Generated per-subnet CatchAll class (KB understanding-client-classification.md)
+# ---------------------------------------------------------------------------
+
+
+def _catchall_entries(result: dict) -> list[dict]:
+    return [
+        c for c in result["Dhcp4"].get("client-classes", []) if c["name"].startswith("CatchAll_")
+    ]
+
+
+def test_catchall_generated_for_mixed_subnet(fp_lib):
+    """A subnet with a guarded pool + an unguarded pool gets a CatchAll class
+    appended last, and the unguarded pool is guarded by it."""
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "10.0.1.0/24",
+                    "pools": [
+                        {"range": "10.0.1.10 - 10.0.1.50", "client-class": "iOS_14_17"},
+                        {"range": "10.0.1.60 - 10.0.1.200"},
+                    ],
+                }
+            ]
+        }
+    )
+    result = build(config, fingerprint_library=fp_lib)
+    classes = result["Dhcp4"]["client-classes"]
+    # CatchAll is the LAST entry (member() needs its referents evaluated first).
+    assert classes[-1] == {"name": "CatchAll_1", "test": "not member('iOS_14_17')"}
+    pools = result["Dhcp4"]["subnet4"][0]["pools"]
+    assert pools[1]["client-classes"] == ["CatchAll_1"]
+
+
+def test_catchall_test_lists_all_used_classes_in_order(fp_lib):
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "10.0.1.0/24",
+                    "pools": [
+                        {"range": "10.0.1.10 - 10.0.1.50", "client-class": "Android_12_14"},
+                        {"range": "10.0.1.60 - 10.0.1.100", "client-class": "macOS"},
+                        {"range": "10.0.1.110 - 10.0.1.200"},
+                    ],
+                }
+            ]
+        }
+    )
+    catchalls = _catchall_entries(build(config, fingerprint_library=fp_lib))
+    assert len(catchalls) == 1
+    assert catchalls[0]["test"] == "not member('Android_12_14') and not member('macOS')"
+
+
+def test_catchall_includes_custom_guard_classes_without_library():
+    """CatchAll generation depends only on pool class strings, so it fires even
+    with no fingerprint library and includes custom (non-library) guard names."""
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "10.0.1.0/24",
+                    "pools": [
+                        {"range": "10.0.1.10 - 10.0.1.50", "client-class": "MyCustomClass"},
+                        {"range": "10.0.1.60 - 10.0.1.200"},
+                    ],
+                }
+            ]
+        }
+    )
+    result = build(config)  # no fingerprint_library
+    # client-classes exists solely because of the generated CatchAll.
+    assert result["Dhcp4"]["client-classes"] == [
+        {"name": "CatchAll_1", "test": "not member('MyCustomClass')"}
+    ]
+    assert result["Dhcp4"]["subnet4"][0]["pools"][1]["client-classes"] == ["CatchAll_1"]
+
+
+def test_no_catchall_when_all_pools_guarded():
+    """No unguarded pool means no CatchAll can be attached — none is generated."""
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "10.0.1.0/24",
+                    "pools": [
+                        {"range": "10.0.1.10 - 10.0.1.50", "client-class": "Windows_11"},
+                        {"range": "10.0.1.60 - 10.0.1.100", "client-class": "macOS"},
+                    ],
+                }
+            ]
+        }
+    )
+    assert _catchall_entries(build(config)) == []
+
+
+def test_no_catchall_when_no_guarded_pools():
+    """A subnet with only unguarded pools has nothing to exclude — no CatchAll."""
+    config = _cfg({"subnets": [{"subnet": "10.0.1.0/24", "pools": [{"range": "auto"}]}]})
+    result = build(config)
+    assert _catchall_entries(result) == []
+    assert "client-classes" not in result["Dhcp4"]["subnet4"][0]["pools"][0]
+
+
+def test_catchall_per_subnet_named_by_assigned_id():
+    """Each qualifying subnet gets its own CatchAll_<id>; names track assigned ids."""
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "10.0.1.0/24",
+                    "pools": [
+                        {"range": "10.0.1.10 - 10.0.1.50", "client-class": "A"},
+                        {"range": "10.0.1.60 - 10.0.1.200"},
+                    ],
+                },
+                {
+                    "subnet": "10.0.2.0/24",
+                    "pools": [
+                        {"range": "10.0.2.10 - 10.0.2.50", "client-class": "B"},
+                        {"range": "10.0.2.60 - 10.0.2.200"},
+                    ],
+                },
+            ]
+        }
+    )
+    result = build(config)
+    names = [c["name"] for c in _catchall_entries(result)]
+    assert names == ["CatchAll_1", "CatchAll_2"]
+    assert result["Dhcp4"]["subnet4"][0]["pools"][1]["client-classes"] == ["CatchAll_1"]
+    assert result["Dhcp4"]["subnet4"][1]["pools"][1]["client-classes"] == ["CatchAll_2"]
+
+
+def test_catchall_reserved_name_conflict_is_rejected():
+    """`CatchAll_<id>` is a reserved name the tool owns. If the user manually
+    defines a class with that exact name in a subnet that would generate one,
+    reject rather than silently rebind their selector to the generated class."""
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "10.0.1.0/24",
+                    "pools": [
+                        # subnet id 1 → reserved name CatchAll_1; user collides.
+                        {"range": "10.0.1.10 - 10.0.1.50", "client-class": "CatchAll_1"},
+                        {"range": "10.0.1.60 - 10.0.1.200"},
+                    ],
+                }
+            ]
+        }
+    )
+    with pytest.raises(KeaConfigError, match="reserved"):
+        build(config)
+
+
+def test_catchall_reserved_name_unused_subnet_does_not_conflict():
+    """A user class named CatchAll_<n> is only rejected when subnet <n> actually
+    generates a catch-all; an unrelated CatchAll_<n> elsewhere is left alone."""
+    config = _cfg(
+        {
+            "subnets": [
+                # subnet id 1 is fully guarded → no CatchAll_1 generated, so a
+                # user class named CatchAll_1 here is fine.
+                {
+                    "subnet": "10.0.1.0/24",
+                    "pools": [
+                        {"range": "10.0.1.10 - 10.0.1.50", "client-class": "CatchAll_1"},
+                        {"range": "10.0.1.60 - 10.0.1.100", "client-class": "macOS"},
+                    ],
+                },
+            ]
+        }
+    )
+    # No unguarded pool in subnet 1 → no CatchAll generated → no conflict.
+    assert _catchall_entries(build(config)) == []
+
+
+def test_catchall_rejects_class_name_with_single_quote():
+    """Regression (codex P2): Kea class-expression string literals have no escape,
+    so a class name with a single quote cannot be embedded in a generated
+    `member('...')` test — reject it with a clear error instead of emitting an
+    unparseable config."""
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "10.0.1.0/24",
+                    "pools": [
+                        {"range": "10.0.1.10 - 10.0.1.50", "client-class": "Bob's"},
+                        {"range": "10.0.1.60 - 10.0.1.200"},
+                    ],
+                }
+            ]
+        }
+    )
+    with pytest.raises(KeaConfigError, match="single quote"):
+        build(config)
+
+
+def test_catchall_generation_is_deterministic(fp_lib):
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "10.0.1.0/24",
+                    "pools": [
+                        {"range": "10.0.1.10 - 10.0.1.50", "client-class": "iOS_14_17"},
+                        {"range": "10.0.1.60 - 10.0.1.100", "client-class": "macOS"},
+                        {"range": "10.0.1.110 - 10.0.1.200"},
+                    ],
+                }
+            ]
+        }
+    )
+    first = build(config, fingerprint_library=fp_lib)
+    second = build(config, fingerprint_library=fp_lib)
+    assert json.dumps(first, sort_keys=False) == json.dumps(second, sort_keys=False)
 
 
 def test_pool_emits_list_form_not_singular_client_class(fp_lib):

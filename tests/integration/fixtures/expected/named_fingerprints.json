@@ -8,6 +8,10 @@
       {
         "name": "macOS",
         "test": "option[55].hex == 0x017903060f77fc5f2c2e or option[55].hex == 0x017903060f7277fc5f2c2e or option[55].hex == 0x017903060f6c7277fc5f2c2e"
+      },
+      {
+        "name": "CatchAll_1",
+        "test": "not member('Android_12_14') and not member('macOS')"
       }
     ],
     "subnet4": [
@@ -28,7 +32,10 @@
             ]
           },
           {
-            "pool": "10.0.10.110 - 10.0.10.150"
+            "pool": "10.0.10.110 - 10.0.10.150",
+            "client-classes": [
+              "CatchAll_1"
+            ]
           }
         ]
       }
