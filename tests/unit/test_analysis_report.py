@@ -157,8 +157,8 @@ dhcp6:
     assert "DHCPv6 subnets: 1" in report
     assert "2001:db8::/48" in report
     assert "NA" in report
-    # 2001:db8::1 to 2001:db8::100 = 256 addresses
-    assert "256 addresses" in report
+    # 2001:db8::1 to 2001:db8::100 = 256 addresses, rendered as an exact power.
+    assert "2^8 addresses" in report
 
 
 def test_dhcp6_na_pool_auto_range():
@@ -172,10 +172,9 @@ dhcp6:
           range: auto
 """)
     report = generate_report(config)
-    # 2001:db8:1::/64 usable range: 2001:db8:1::1 - 2001:db8:1::ffff:ffff:ffff:fffe
-    # For /64, that's 2^64 - 2 addresses, but we only count usable span
-    # Actually, for IPv6 /64, the count is much larger; let's just verify it mentions the pool
-    assert "NA" in report
+    # 2001:db8:1::/64 usable span is 2^64 - 2 addresses; not an exact power, so it
+    # renders against the nearest exponent as "~2^64" (never a 20-digit decimal).
+    assert "NA: ~2^64 addresses" in report
 
 
 # ---------------------------------------------------------------------------
@@ -572,3 +571,32 @@ dhcp4:
     assert "Subnet Inventory" in report
     assert "DHCPv4 subnets: 0" in report
     assert "DHCPv6 subnets: 0" in report
+
+
+# ---------------------------------------------------------------------------
+# Power-of-two NA address-count rendering
+# ---------------------------------------------------------------------------
+
+
+def test_format_pow2_exact_approx_and_minus():
+    """Counts render against the next power up: exact 2^n, ~2^n within 4, else 2^n - k."""
+    from kea_dhcp_config_generator.analysis.report import _format_pow2
+
+    # Exact powers of two.
+    assert _format_pow2(1) == "2^0"
+    assert _format_pow2(256) == "2^8"
+    assert _format_pow2(2 ** 64) == "2^64"
+
+    # Gap <= 4 below the next power -> "~2^n".
+    assert _format_pow2(2 ** 8 - 1) == "~2^8"     # gap 1
+    assert _format_pow2(2 ** 8 - 4) == "~2^8"     # gap 4 (boundary, inclusive)
+    assert _format_pow2(2 ** 64 - 2) == "~2^64"   # auto /64 span
+
+    # Gap >= 5 below the next power -> "2^n - k" (always minus, never plus).
+    assert _format_pow2(2 ** 8 - 5) == "2^8 - 5"  # gap 5 (boundary)
+    assert _format_pow2(236) == "2^8 - 20"        # 256 - 20
+    assert _format_pow2(500) == "2^9 - 12"        # 512 - 12
+    assert _format_pow2(100) == "2^7 - 28"        # 128 - 28
+
+    # Degenerate counts.
+    assert _format_pow2(0) == "0"

@@ -98,7 +98,7 @@ def _subnet_inventory(config: GlobalConfig) -> list[str]:
                 for pool in subnet.pools:
                     if isinstance(pool, PoolV6NaModel):
                         pool_ips = _count_v6_na_pool_ips(pool, subnet.subnet)
-                        lines.append(f"    NA: {pool_ips} addresses")
+                        lines.append(f"    NA: {_format_pow2(pool_ips)} addresses")
                     elif isinstance(pool, PoolV6PdModel):
                         prefix_count = _count_v6_pd_prefixes(pool)
                         lines.append(f"    PD: {prefix_count} delegable prefixes")
@@ -144,6 +144,35 @@ def _count_v6_na_pool_ips(pool: PoolV6NaModel, subnet: IPv6Network) -> int:
 def _count_v6_pd_prefixes(pool: PoolV6PdModel) -> int:
     """Count delegable prefixes in a PD pool: 2^(delegated_len - prefix_len)."""
     return 2 ** (pool.delegated_len - pool.prefix_len)
+
+
+def _format_pow2(count: int) -> str:
+    """Render an address count relative to the next power of two for readability.
+
+    IPv6 NA counts are too large to print as decimals usefully (an auto /64 pool
+    is 2**64 - 2). The value is always expressed against the power of two at or
+    above it, so the remainder is subtracted (never added):
+
+      - exact power of two           -> "2^n"
+      - within 4 of the next power    -> "~2^n"        (gap <= 4)
+      - otherwise                     -> "2^n - k"     (gap >= 5)
+
+    Uses integer bit math only (no float log2) so it is exact for the full IPv6
+    range.
+
+    Examples: 256 -> "2^8"; (2**64 - 2) -> "~2^64"; 236 -> "2^8 - 20"; 0 -> "0".
+    """
+    if count <= 0:
+        return str(count)
+    # Exact power of two: only one bit set.
+    if count & (count - 1) == 0:
+        return f"2^{count.bit_length() - 1}"
+    # bit_length() is the exponent of the next power of two strictly above count.
+    high = count.bit_length()          # 2^high > count
+    gap = (1 << high) - count          # how far below that power we are (>= 1)
+    if gap <= 4:
+        return f"~2^{high}"
+    return f"2^{high} - {gap}"
 
 
 def _classification(config: GlobalConfig) -> list[str]:
