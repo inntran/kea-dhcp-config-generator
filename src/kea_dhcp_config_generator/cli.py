@@ -5,10 +5,13 @@ from pathlib import Path
 import typer
 
 import kea_dhcp_config_generator as api
+from kea_dhcp_config_generator import writer
+from kea_dhcp_config_generator.analysis import report as analysis_report
 from kea_dhcp_config_generator.validation.errors import (
     ConfigError,
     ConfigWarning,
     KeaConfigError,
+    ValidationResult,
 )
 
 app = typer.Typer(
@@ -64,6 +67,16 @@ def main(
         "--strict",
         help="Promote configuration warnings (e.g. no catch-all pool) to errors.",
     ),
+    analysis: bool = typer.Option(
+        False,
+        "--analysis",
+        help="Generate analysis report alongside JSON (or analysis-only with --analysis-only).",
+    ),
+    analysis_only: bool = typer.Option(
+        False,
+        "--analysis-only",
+        help="Print the analysis report to stdout and skip JSON generation.",
+    ),
 ) -> None:
     """Generate Kea DHCPv4/DHCPv6 JSON configuration from YAML."""
     try:
@@ -83,8 +96,37 @@ def main(
     if errors:
         for error in errors:
             typer.echo(_format_error(error), err=True)
+        
+        # If analysis or analysis_only requested, still produce report (even with errors)
+        # but only if validated_config is not None (config parsed structurally).
+        if (analysis or analysis_only) and validated_config is not None:
+            validation_result = ValidationResult(
+                errors=errors,
+                warnings=warnings,
+                validated_config=validated_config,
+            )
+            report = analysis_report.generate_report(validated_config, validation_result)
+            typer.echo(report)
+        
         raise typer.Exit(code=1) from None
 
+    # If analysis_only or analysis requested, build and output the report.
+    if analysis_only or analysis:
+        validation_result = ValidationResult(
+            errors=errors,
+            warnings=warnings,
+            validated_config=validated_config,
+        )
+        report = analysis_report.generate_report(validated_config, validation_result)
+        
+        # analysis_only: print to stdout, don't generate JSON
+        if analysis_only:
+            typer.echo(report)
+            raise typer.Exit(code=0)
+        
+        # analysis (generation + analysis): continue to generate JSON below
+    
+    # Generate JSON output (normal path or generation+analysis path)
     try:
         try:
             result = api._build_generated_outputs(
@@ -107,8 +149,23 @@ def main(
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=2) from None
 
+    # Output JSON file paths
     if result.dhcp4_path is not None:
         typer.echo(str(result.dhcp4_path))
     if result.dhcp6_path is not None:
         typer.echo(str(result.dhcp6_path))
+    
+    # If analysis flag (not just analysis_only), also generate and output analysis file path
+    if analysis:
+        validation_result = ValidationResult(
+            errors=errors,
+            warnings=warnings,
+            validated_config=validated_config,
+        )
+        report = analysis_report.generate_report(validated_config, validation_result)
+        analysis_path = writer.write_analysis(
+            report, output_dir, overwrite=overwrite
+        )
+        typer.echo(str(analysis_path))
+    
     raise typer.Exit(code=0)

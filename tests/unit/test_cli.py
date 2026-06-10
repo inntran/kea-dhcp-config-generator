@@ -432,3 +432,234 @@ def test_output_schema_collect_all_across_protocols(tmp_path, monkeypatch):
     # No file written for either protocol.
     assert not (tmp_path / "kea-dhcp4.conf").exists()
     assert not (tmp_path / "kea-dhcp6.conf").exists()
+
+
+# ---------------------------------------------------------------------------
+# Story 6.2: --analysis and --analysis-only flags
+# ---------------------------------------------------------------------------
+
+
+def test_analysis_only_valid_config_exits_zero(tmp_path):
+    """AC: --analysis-only on valid config prints report to stdout, exits 0."""
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("dhcp4:\n  subnets: []\n")
+    result = runner.invoke(app, ["--config", str(cfg), "--analysis-only"])
+    assert result.exit_code == 0
+    assert "Configuration Analysis Report" in result.stdout
+
+
+def test_analysis_only_valid_config_no_json_files(tmp_path):
+    """AC: --analysis-only produces no JSON files."""
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("dhcp4:\n  subnets: []\n")
+    result = runner.invoke(
+       app, ["--config", str(cfg), "--output-dir", str(tmp_path), "--analysis-only"]
+    )
+    assert result.exit_code == 0
+    # No kea-dhcp4.conf files (timestamped or canonical)
+    assert not any(p.name.startswith("kea-dhcp4") for p in tmp_path.iterdir())
+    assert not any(p.name.startswith("kea-dhcp6") for p in tmp_path.iterdir())
+
+
+def test_analysis_only_invalid_config_exits_one(tmp_path):
+    """AC: --analysis-only on structural error (config parse failure) exits 1 with no report.
+    
+    When validated_config is None (config failed to parse structurally), we cannot
+    build a report. Fall back to today's behavior: errors to stderr, exit 1, no report.
+    """
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("dhcp4:\n  valid-lifetime: INVALID\n  subnets: []\n")
+    result = runner.invoke(app, ["--config", str(cfg), "--analysis-only"])
+    assert result.exit_code == 1
+    assert "Error:" in result.stderr
+    # No report on stdout because config failed to parse structurally
+    assert result.stdout == ""
+
+
+def test_analysis_only_invalid_semantic_errors_to_stderr(tmp_path):
+    """AC: --analysis-only with semantic errors prints errors to stderr."""
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(
+       "dhcp4:\n"
+       "  subnets:\n"
+       "    - subnet: 10.0.4.0/23\n"
+       "    - subnet: 10.0.4.0/24\n"
+    )
+    result = runner.invoke(app, ["--config", str(cfg), "--analysis-only"])
+    assert result.exit_code == 1
+    assert "Error: Line" in result.stderr
+    # Report still on stdout
+    assert "Configuration Analysis Report" in result.stdout
+
+
+def test_analysis_flag_with_generation_valid_exits_zero(tmp_path):
+    """AC: --analysis with valid config generates JSON + analysis file, exits 0."""
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("dhcp4:\n  subnets: []\n")
+    result = runner.invoke(
+       app, ["--config", str(cfg), "--output-dir", str(tmp_path), "--analysis"]
+    )
+    assert result.exit_code == 0
+    # Should have 2 paths on stdout: dhcp4 JSON and analysis file
+    paths = [line for line in result.stdout.splitlines() if line.strip()]
+    assert len(paths) == 2
+    assert any("kea-dhcp4" in p for p in paths)
+    assert any("kea-analysis" in p for p in paths)
+
+
+def test_analysis_flag_with_generation_writes_both_files(tmp_path):
+    """AC: --analysis writes both JSON and analysis file to disk."""
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("dhcp4:\n  subnets: []\n")
+    result = runner.invoke(
+       app, ["--config", str(cfg), "--output-dir", str(tmp_path), "--analysis"]
+    )
+    assert result.exit_code == 0
+    # Check JSON file exists
+    json_files = list(tmp_path.glob("kea-dhcp4*.conf"))
+    assert len(json_files) >= 1
+    # Check analysis file exists
+    analysis_files = list(tmp_path.glob("kea-analysis*.txt"))
+    assert len(analysis_files) >= 1
+
+
+def test_analysis_flag_with_generation_not_on_stdout(tmp_path):
+    """AC: --analysis report is NOT on stdout (only paths)."""
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("dhcp4:\n  subnets: []\n")
+    result = runner.invoke(
+       app, ["--config", str(cfg), "--output-dir", str(tmp_path), "--analysis"]
+    )
+    assert result.exit_code == 0
+    # Report headers should NOT be in stdout (only file paths)
+    assert "Configuration Analysis Report" not in result.stdout
+    # But should have file paths
+    paths = [line for line in result.stdout.splitlines() if line.strip()]
+    assert len(paths) == 2
+
+
+def test_analysis_flag_with_dhcp6_only(tmp_path):
+    """AC: --analysis with DHCPv6-only config produces dhcp6 JSON + analysis file."""
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("dhcp6:\n  subnets:\n    - subnet: \"2001:db8:1::/64\"\n")
+    result = runner.invoke(
+       app, ["--config", str(cfg), "--output-dir", str(tmp_path), "--analysis"]
+    )
+    assert result.exit_code == 0
+    paths = [line for line in result.stdout.splitlines() if line.strip()]
+    assert len(paths) == 2
+    assert any("kea-dhcp6" in p for p in paths)
+    assert any("kea-analysis" in p for p in paths)
+
+
+def test_analysis_flag_dual_stack(tmp_path):
+    """AC: --analysis with dual-stack produces 3 paths (dhcp4, dhcp6, analysis)."""
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(
+       "dhcp4:\n"
+       "  subnets:\n"
+       "    - subnet: 10.0.1.0/24\n"
+       "dhcp6:\n"
+       "  subnets:\n"
+       "    - subnet: \"2001:db8:1::/64\"\n"
+    )
+    result = runner.invoke(
+       app, ["--config", str(cfg), "--output-dir", str(tmp_path), "--analysis"]
+    )
+    assert result.exit_code == 0
+    paths = [line for line in result.stdout.splitlines() if line.strip()]
+    assert len(paths) == 3
+    assert any("kea-dhcp4" in p for p in paths)
+    assert any("kea-dhcp6" in p for p in paths)
+    assert any("kea-analysis" in p for p in paths)
+
+
+def test_no_flag_unchanged_no_analysis(tmp_path):
+    """AC: without --analysis or --analysis-only, behavior is unchanged (no analysis file)."""
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("dhcp4:\n  subnets: []\n")
+    result = runner.invoke(
+       app, ["--config", str(cfg), "--output-dir", str(tmp_path)]
+    )
+    assert result.exit_code == 0
+    # Should have exactly 1 path (dhcp4 JSON only)
+    paths = [line for line in result.stdout.splitlines() if line.strip()]
+    assert len(paths) == 1
+    assert "kea-dhcp4" in paths[0]
+    # No analysis file should exist
+    assert not any(p.name.startswith("kea-analysis") for p in tmp_path.iterdir())
+
+
+def test_analysis_only_wins_over_analysis(tmp_path):
+    """AC: if both --analysis and --analysis-only are passed, --analysis-only wins."""
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("dhcp4:\n  subnets: []\n")
+    result = runner.invoke(
+       app,
+       [
+           "--config",
+           str(cfg),
+           "--output-dir",
+           str(tmp_path),
+           "--analysis",
+           "--analysis-only",
+       ],
+    )
+    assert result.exit_code == 0
+    # Should be analysis-only: report on stdout, no JSON files
+    assert "Configuration Analysis Report" in result.stdout
+    assert not any(p.name.startswith("kea-dhcp4") for p in tmp_path.iterdir())
+    assert not any(p.name.startswith("kea-analysis") for p in tmp_path.iterdir())
+
+
+def test_analysis_flag_respects_overwrite(tmp_path):
+    """AC: --analysis --overwrite writes canonical analysis filename."""
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("dhcp4:\n  subnets: []\n")
+    result = runner.invoke(
+       app,
+       [
+           "--config",
+           str(cfg),
+           "--output-dir",
+           str(tmp_path),
+           "--analysis",
+           "--overwrite",
+       ],
+    )
+    assert result.exit_code == 0
+    # Should have canonical filenames (no timestamps)
+    assert (tmp_path / "kea-dhcp4.conf").exists()
+    assert (tmp_path / "kea-analysis.txt").exists()
+    paths = [line for line in result.stdout.splitlines() if line.strip()]
+    assert any("kea-dhcp4.conf" in p for p in paths)
+    assert any("kea-analysis.txt" in p for p in paths)
+
+
+def test_analysis_flag_respects_output_dir(tmp_path):
+    """AC: --analysis --output-dir writes analysis file to specified directory."""
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("dhcp4:\n  subnets: []\n")
+    out_dir = tmp_path / "output"
+    out_dir.mkdir()
+    result = runner.invoke(
+       app,
+       [
+           "--config",
+           str(cfg),
+           "--output-dir",
+           str(out_dir),
+           "--analysis",
+       ],
+    )
+    assert result.exit_code == 0
+    # Both files should be in output_dir
+    json_files = list(out_dir.glob("kea-dhcp4*.conf"))
+    analysis_files = list(out_dir.glob("kea-analysis*.txt"))
+    assert len(json_files) >= 1
+    assert len(analysis_files) >= 1
+    # Parent tmp_path should not have any kea files
+    assert not any(
+       p.name.startswith("kea-") for p in tmp_path.glob("kea-*") if p.name != "output"
+    )
+

@@ -114,3 +114,76 @@ def test_output_is_valid_utf8(tmp_path):
     """Output file is valid UTF-8 (explicit encoding on write)."""
     path = writer.write(_SIMPLE_DICT, "dhcp4", tmp_path, timestamp=_FIXED_TS)
     path.read_text(encoding="utf-8")  # raises UnicodeDecodeError if not valid UTF-8
+
+
+# ---------------------------------------------------------------------------
+# Story 6.2: write_analysis tests
+# ---------------------------------------------------------------------------
+
+
+def test_write_analysis_default_filename_contains_timestamp(tmp_path):
+    """write_analysis default mode produces timestamped filename."""
+    report = "Configuration Analysis Report\n\nSubnet Inventory\n"
+    path = writer.write_analysis(report, tmp_path, timestamp=_FIXED_TS)
+    assert path.name == "kea-analysis-20260321-1430.txt"
+
+
+def test_write_analysis_default_file_is_created(tmp_path):
+    """write_analysis creates the file on disk."""
+    report = "Configuration Analysis Report\n"
+    path = writer.write_analysis(report, tmp_path, timestamp=_FIXED_TS)
+    assert path.exists()
+
+
+def test_write_analysis_content_round_trip(tmp_path):
+    """write_analysis preserves the exact report content."""
+    report = "Configuration Analysis Report\n\nSubnet Inventory\nDHCPv4 subnets: 1\n"
+    path = writer.write_analysis(report, tmp_path, timestamp=_FIXED_TS)
+    read_back = path.read_text(encoding="utf-8")
+    assert read_back == report
+
+
+def test_write_analysis_overwrite_produces_canonical_filename(tmp_path):
+    """write_analysis --overwrite → kea-analysis.txt."""
+    report = "Test report\n"
+    path = writer.write_analysis(report, tmp_path, overwrite=True)
+    assert path.name == "kea-analysis.txt"
+
+
+def test_write_analysis_overwrite_silently_replaces_existing_file(tmp_path):
+    """write_analysis --overwrite replaces existing file."""
+    canonical = tmp_path / "kea-analysis.txt"
+    canonical.write_text("old content")
+    report = "New analysis report\n"
+    writer.write_analysis(report, tmp_path, overwrite=True)
+    assert canonical.read_text() == report
+
+
+def test_write_analysis_determinism_same_inputs_byte_identical(tmp_path):
+    """write_analysis with same inputs produces byte-identical files."""
+    p1 = tmp_path / "run1"
+    p1.mkdir()
+    p2 = tmp_path / "run2"
+    p2.mkdir()
+    report = "Configuration Analysis Report\n\nSubnet Inventory\nDHCPv4 subnets: 2\n"
+    path1 = writer.write_analysis(report, p1, timestamp=_FIXED_TS)
+    path2 = writer.write_analysis(report, p2, timestamp=_FIXED_TS)
+    assert path1.read_bytes() == path2.read_bytes()
+
+
+def test_write_analysis_output_ends_with_newline_if_provided(tmp_path):
+    """If report already ends with newline, output ends with newline."""
+    report = "Test report\n"
+    path = writer.write_analysis(report, tmp_path, timestamp=_FIXED_TS)
+    assert path.read_bytes().endswith(b"\n")
+
+
+def test_write_analysis_output_is_valid_utf8(tmp_path):
+    """write_analysis output is valid UTF-8."""
+    report = (
+        "Configuration Analysis Report\n\n"
+        "Client Classification\n"
+        "rules in use: BYOD, Corporate\n"
+    )
+    path = writer.write_analysis(report, tmp_path, timestamp=_FIXED_TS)
+    path.read_text(encoding="utf-8")  # raises UnicodeDecodeError if not valid

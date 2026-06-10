@@ -3,6 +3,10 @@
 Filename modes:
   default     kea-{protocol}-YYYYMMDD-HHMM.conf  (timestamped; safe for repeated runs)
   --overwrite kea-{protocol}.conf                 (overwrites any existing file)
+
+Analysis report file modes:
+  default     kea-analysis-YYYYMMDD-HHMM.txt     (timestamped; safe for repeated runs)
+  --overwrite kea-analysis.txt                    (overwrites any existing file)
 """
 
 import json
@@ -62,5 +66,40 @@ def write(
         json.dumps(document, indent=2, ensure_ascii=True, sort_keys=False) + "\n",
         encoding="utf-8",
     )
+
+    return output_path
+
+
+def write_analysis(
+    report: str,
+    output_dir: Path = Path("."),
+    *,
+    overwrite: bool = False,
+    timestamp: datetime | None = None,
+) -> Path:
+    """Write an analysis report to a file and return the written path.
+
+    Args:
+        report:     The plain-text report string (from analysis.generate_report).
+        output_dir: Directory to write the file into. Defaults to CWD.
+        overwrite:  Write to canonical filename (kea-analysis.txt); overwrite
+                    any existing file. Default False produces a timestamped filename.
+        timestamp:  Override the timestamp (injectable for deterministic tests).
+                    Defaults to datetime.now() at call time.
+
+    Returns:
+        Path to the written file.
+    """
+    if timestamp is None:
+        timestamp = datetime.now()
+
+    if overwrite:
+        filename = "kea-analysis.txt"
+    else:
+        ts_str = timestamp.strftime("%Y%m%d-%H%M")
+        filename = f"kea-analysis-{ts_str}.txt"
+
+    output_path = output_dir / filename
+    output_path.write_text(report, encoding="utf-8")
 
     return output_path
