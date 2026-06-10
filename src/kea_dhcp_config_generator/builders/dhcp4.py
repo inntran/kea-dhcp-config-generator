@@ -31,6 +31,7 @@ from kea_dhcp_config_generator.models.input import (
     SubnetV4Model,
 )
 from kea_dhcp_config_generator.validation.errors import KeaConfigError
+from kea_dhcp_config_generator.validation.semantic import _is_builtin_class
 
 
 def build(config: GlobalConfig, fingerprint_library: DHCPFingerprint | None = None) -> dict:
@@ -72,7 +73,12 @@ def build(config: GlobalConfig, fingerprint_library: DHCPFingerprint | None = No
     # --- Subnet list (client-classes immediately before subnet4, Kea-natural order) ---
     if dhcp4.subnets:
         client_classes = _collect_client_classes(dhcp4, fingerprint_library)
-        subnet4, catchall_classes = _build_subnet4(dhcp4, config.option_profiles)
+        # Names that will exist as top-level client-class definitions in the
+        # output. A generated CatchAll may safely reference these (plus Kea
+        # built-ins) via member(); an undefined reference is rejected in
+        # _make_catchall_test.
+        defined_classes = {c["name"] for c in client_classes}
+        subnet4, catchall_classes = _build_subnet4(dhcp4, config.option_profiles, defined_classes)
         # Generated CatchAll classes use `not member(<device class>)`, so they must
         # be evaluated AFTER the device classes — append them last. They are emitted
         # even when no device class resolved to a library rule (e.g. all-custom
@@ -254,18 +260,25 @@ def _subnet_used_pool_classes(subnet: SubnetV4Model) -> list[str]:
     return used
 
 
-def _make_catchall_test(used_classes: list[str]) -> str:
+def _make_catchall_test(used_classes: list[str], defined_classes: set[str]) -> str:
     """Build the CatchAll test expression: `not member('A') and not member('B')`.
 
     Mirrors the Kea KB catch-all pattern (understanding-client-classification.md):
     the synthesized class matches exactly the clients that belong to none of the
     subnet's guarded classes.
 
+    `defined_classes` is the set of class names that will exist as top-level
+    `client-classes` definitions in the output (the library-resolved guard names).
+    A `member('X')` reference is only valid in Kea when X is a defined class or a
+    Kea built-in (KNOWN/UNKNOWN/DROP/ALL/... — see `_is_builtin_class`); referencing
+    an undefined class makes `kea-dhcp4 -t` reject the config. A guard that is
+    neither is rejected here with a clear error rather than emitting an invalid
+    config (NFR4).
+
     Class names are embedded inside single-quoted Kea expression string literals.
     Kea's eval lexer string rule is `'[^'\n]*'` with NO escape mechanism, so a
     name containing a single quote or newline cannot be represented and would
-    produce an unparseable config. Reject such names with a clear error rather
-    than emit broken output.
+    produce an unparseable config. Reject such names with a clear error too.
     """
     for name in used_classes:
         if "'" in name or "\n" in name:
@@ -273,6 +286,13 @@ def _make_catchall_test(used_classes: list[str]) -> str:
                 f"client-class name {name!r} cannot be used in a generated catch-all "
                 "expression: Kea class-expression string literals cannot contain a "
                 "single quote or newline. Rename the class."
+            )
+        if name not in defined_classes and not _is_builtin_class(name):
+            raise KeaConfigError(
+                f"client-class {name!r} guards a pool but is not defined: a generated "
+                "catch-all references it with member(), which Kea rejects for an "
+                "undefined class. Add a fingerprint-library rule for it (or use a "
+                "Kea built-in class)."
             )
     return " and ".join(f"not member('{name}')" for name in used_classes)
 
@@ -315,6 +335,7 @@ def _catchall_name(assigned_id: int | str, referenced: set[str]) -> str:
 def _build_subnet4(
     dhcp4: Dhcp4Config,
     option_profiles: dict[str, OptionProfileModel],
+    defined_classes: set[str],
 ) -> tuple[list[dict], list[dict]]:
     """Build the subnet4 list and any generated per-subnet CatchAll classes.
 
@@ -331,7 +352,10 @@ def _build_subnet4(
     clients that match a restricted class (Kea KB
     understanding-client-classification.md:188-235). The generated class dicts are
     returned for the caller to append AFTER the device classes (member() requires
-    its referents to be evaluated first).
+    its referents to be evaluated first). `defined_classes` is the set of names
+    that will exist as top-level client-class definitions (library-resolved guard
+    names); a CatchAll guard outside this set and not a Kea built-in is rejected,
+    since member() on an undefined class makes kea-dhcp4 -t fail.
 
     Subnet key order (Kea-natural):
         id → subnet → valid-lifetime → renew-timer → rebind-timer → client-classes
@@ -381,7 +405,10 @@ def _build_subnet4(
         if used_classes and has_unguarded_pool:
             catchall_name = _catchall_name(assigned_id, referenced_class_names)
             catchall_classes.append(
-                {"name": catchall_name, "test": _make_catchall_test(used_classes)}
+                {
+                    "name": catchall_name,
+                    "test": _make_catchall_test(used_classes, defined_classes),
+                }
             )
 
         subnet_dict: dict = {

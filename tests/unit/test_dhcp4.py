@@ -478,7 +478,7 @@ def test_pool_without_client_class_has_no_client_classes_key():
     assert "client-classes" not in pool
 
 
-def test_multiple_pools_mixed_client_class():
+def test_multiple_pools_mixed_client_class(fp_lib):
     """A guarded pool keeps its class; the unguarded pool is auto-guarded by the
     generated per-subnet CatchAll so it no longer serves matched clients."""
     config = _cfg(
@@ -487,17 +487,19 @@ def test_multiple_pools_mixed_client_class():
                 {
                     "subnet": "10.0.1.0/24",
                     "pools": [
-                        {"range": "10.0.1.10 - 10.0.1.100", "client-class": "Windows_11"},
+                        {"range": "10.0.1.10 - 10.0.1.100", "client-class": "Windows_10_11"},
                         {"range": "10.0.1.101 - 10.0.1.200"},
                     ],
                 }
             ]
         }
     )
-    result = build(config)
+    # Windows_10_11 resolves in the library, so it gets a top-level definition the
+    # generated CatchAll can reference.
+    result = build(config, fingerprint_library=fp_lib)
     pools = result["Dhcp4"]["subnet4"][0]["pools"]
 
-    assert pools[0]["client-classes"] == ["Windows_11"]
+    assert pools[0]["client-classes"] == ["Windows_10_11"]
     # The formerly-unguarded pool is now guarded by the synthesized CatchAll class.
     assert pools[1]["client-classes"] == ["CatchAll_1"]
 
@@ -1208,9 +1210,12 @@ def test_catchall_test_lists_all_used_classes_in_order(fp_lib):
     assert catchalls[0]["test"] == "not member('Android_12_14') and not member('macOS')"
 
 
-def test_catchall_includes_custom_guard_classes_without_library():
-    """CatchAll generation depends only on pool class strings, so it fires even
-    with no fingerprint library and includes custom (non-library) guard names."""
+def test_catchall_rejects_undefined_custom_guard_class():
+    """A generated CatchAll emits `not member('<guard>')`. If the guard class is
+    not defined anywhere in the output (no fingerprint-library rule resolves it
+    and it is not a Kea built-in), the reference is undefined and `kea-dhcp4 -t`
+    rejects the config. Reject at build time with a clear error instead of
+    emitting an invalid config (NFR4)."""
     config = _cfg(
         {
             "subnets": [
@@ -1224,11 +1229,52 @@ def test_catchall_includes_custom_guard_classes_without_library():
             ]
         }
     )
-    result = build(config)  # no fingerprint_library
-    # client-classes exists solely because of the generated CatchAll.
-    assert result["Dhcp4"]["client-classes"] == [
-        {"name": "CatchAll_1", "test": "not member('MyCustomClass')"}
-    ]
+    with pytest.raises(KeaConfigError, match="MyCustomClass"):
+        build(config)  # no fingerprint_library → MyCustomClass is undefined
+
+
+def test_catchall_allows_library_resolved_guard_class(fp_lib):
+    """A guard class that resolves in the fingerprint library gets a top-level
+    definition, so the generated `not member(...)` reference is valid."""
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "10.0.1.0/24",
+                    "pools": [
+                        {"range": "10.0.1.10 - 10.0.1.50", "client-class": "iOS_14_17"},
+                        {"range": "10.0.1.60 - 10.0.1.200"},
+                    ],
+                }
+            ]
+        }
+    )
+    result = build(config, fingerprint_library=fp_lib)
+    # iOS_14_17 is defined (library rule) and referenced by the CatchAll.
+    names = [c["name"] for c in result["Dhcp4"]["client-classes"]]
+    assert "iOS_14_17" in names
+    assert _catchall_entries(result) == [{"name": "CatchAll_1", "test": "not member('iOS_14_17')"}]
+
+
+def test_catchall_allows_builtin_guard_class():
+    """Kea built-in classes (KNOWN/UNKNOWN/DROP/ALL/...) need no definition, so a
+    CatchAll may reference one without a library and without an explicit
+    definition."""
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "10.0.1.0/24",
+                    "pools": [
+                        {"range": "10.0.1.10 - 10.0.1.50", "client-class": "KNOWN"},
+                        {"range": "10.0.1.60 - 10.0.1.200"},
+                    ],
+                }
+            ]
+        }
+    )
+    result = build(config)  # no library; KNOWN is built-in
+    assert _catchall_entries(result) == [{"name": "CatchAll_1", "test": "not member('KNOWN')"}]
     assert result["Dhcp4"]["subnet4"][0]["pools"][1]["client-classes"] == ["CatchAll_1"]
 
 
@@ -1258,7 +1304,7 @@ def test_no_catchall_when_no_guarded_pools():
     assert "client-classes" not in result["Dhcp4"]["subnet4"][0]["pools"][0]
 
 
-def test_catchall_per_subnet_named_by_assigned_id():
+def test_catchall_per_subnet_named_by_assigned_id(fp_lib):
     """Each qualifying subnet gets its own CatchAll_<id>; names track assigned ids."""
     config = _cfg(
         {
@@ -1266,21 +1312,21 @@ def test_catchall_per_subnet_named_by_assigned_id():
                 {
                     "subnet": "10.0.1.0/24",
                     "pools": [
-                        {"range": "10.0.1.10 - 10.0.1.50", "client-class": "A"},
+                        {"range": "10.0.1.10 - 10.0.1.50", "client-class": "iOS_14_17"},
                         {"range": "10.0.1.60 - 10.0.1.200"},
                     ],
                 },
                 {
                     "subnet": "10.0.2.0/24",
                     "pools": [
-                        {"range": "10.0.2.10 - 10.0.2.50", "client-class": "B"},
+                        {"range": "10.0.2.10 - 10.0.2.50", "client-class": "Android_12_14"},
                         {"range": "10.0.2.60 - 10.0.2.200"},
                     ],
                 },
             ]
         }
     )
-    result = build(config)
+    result = build(config, fingerprint_library=fp_lib)
     names = [c["name"] for c in _catchall_entries(result)]
     assert names == ["CatchAll_1", "CatchAll_2"]
     assert result["Dhcp4"]["subnet4"][0]["pools"][1]["client-classes"] == ["CatchAll_1"]
