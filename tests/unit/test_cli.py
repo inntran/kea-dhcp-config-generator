@@ -30,7 +30,7 @@ def test_valid_dhcp6_only_config_writes_dhcp6_path(tmp_path):
     """DHCPv6-only config: dhcp6 builder writes a kea-dhcp6 file path to stdout."""
     cfg = tmp_path / "config.yaml"
     cfg.write_text("dhcp6:\n  subnets: []\n")
-    result = runner.invoke(app, ["--config", str(cfg), "--output-dir", str(tmp_path)])
+    result = runner.invoke(app, ["--config", str(cfg), "--output", str(tmp_path)])
     assert result.exit_code == 0
     assert "kea-dhcp6" in result.stdout
     assert result.stdout.strip().count("\n") == 0  # exactly one path line
@@ -122,7 +122,7 @@ def test_success_dhcp6_only_writes_one_path(tmp_path):
     """DHCPv6-only config produces exactly one output file path on stdout."""
     cfg = tmp_path / "config.yaml"
     cfg.write_text("dhcp6:\n  subnets: []\n")
-    result = runner.invoke(app, ["--config", str(cfg), "--output-dir", str(tmp_path)])
+    result = runner.invoke(app, ["--config", str(cfg), "--output", str(tmp_path)])
     assert result.exit_code == 0
     paths = [line for line in result.stdout.splitlines() if line.strip()]
     assert len(paths) == 1
@@ -140,7 +140,7 @@ def test_dual_stack_writes_both_files(tmp_path):
         "  subnets:\n"
         "    - subnet: \"2001:db8:1::/64\"\n"
     )
-    result = runner.invoke(app, ["--config", str(cfg), "--output-dir", str(tmp_path)])
+    result = runner.invoke(app, ["--config", str(cfg), "--output", str(tmp_path)])
     assert result.exit_code == 0
     paths = [line for line in result.stdout.splitlines() if line.strip()]
     assert len(paths) == 2
@@ -200,7 +200,7 @@ def test_valid_dhcp4_config_stdout_contains_path(tmp_path):
     """AC #1: successful generation writes output file path to stdout."""
     cfg = tmp_path / "config.yaml"
     cfg.write_text("dhcp4:\n  subnets: []\n")
-    result = runner.invoke(app, ["--config", str(cfg), "--output-dir", str(tmp_path)])
+    result = runner.invoke(app, ["--config", str(cfg), "--output", str(tmp_path)])
     assert result.exit_code == 0
     assert result.stdout.strip().endswith(".conf")
 
@@ -209,7 +209,7 @@ def test_valid_dhcp4_config_stdout_has_one_line(tmp_path):
     """AC #1: exactly one file path written to stdout."""
     cfg = tmp_path / "config.yaml"
     cfg.write_text("dhcp4:\n  subnets: []\n")
-    result = runner.invoke(app, ["--config", str(cfg), "--output-dir", str(tmp_path)])
+    result = runner.invoke(app, ["--config", str(cfg), "--output", str(tmp_path)])
     lines = [line for line in result.stdout.splitlines() if line.strip()]
     assert len(lines) == 1
 
@@ -218,7 +218,7 @@ def test_valid_dhcp4_config_stderr_empty_on_success(tmp_path):
     """AC #1: no content written to stderr on successful generation."""
     cfg = tmp_path / "config.yaml"
     cfg.write_text("dhcp4:\n  subnets: []\n")
-    result = runner.invoke(app, ["--config", str(cfg), "--output-dir", str(tmp_path)])
+    result = runner.invoke(app, ["--config", str(cfg), "--output", str(tmp_path)])
     assert result.stderr == ""
 
 
@@ -228,7 +228,7 @@ def test_overwrite_replaces_existing_file(tmp_path):
     cfg.write_text("dhcp4:\n  subnets: []\n")
     (tmp_path / "kea-dhcp4.conf").write_text("old content")
     result = runner.invoke(
-        app, ["--config", str(cfg), "--output-dir", str(tmp_path), "--overwrite"]
+        app, ["--config", str(cfg), "--output", str(tmp_path), "--overwrite"]
     )
     assert result.exit_code == 0
 
@@ -246,7 +246,7 @@ def test_semantic_overlap_exits_one(tmp_path):
         "    - subnet: 10.0.4.0/23\n"
         "    - subnet: 10.0.4.0/24\n"
     )
-    result = runner.invoke(app, ["--config", str(cfg), "--output-dir", str(tmp_path)])
+    result = runner.invoke(app, ["--config", str(cfg), "--output", str(tmp_path)])
     assert result.exit_code == 1
     assert "Error: Line" in result.stderr
     assert "10.0.4.0/23" in result.stderr
@@ -279,7 +279,7 @@ def test_strict_promotes_catch_all_warning_to_error(tmp_path):
     cfg.write_text(_NO_CATCH_ALL_CFG)
     result = runner.invoke(
         app,
-        ["--config", str(cfg), "--output-dir", str(tmp_path), "--strict"],
+        ["--config", str(cfg), "--output", str(tmp_path), "--strict"],
     )
     assert result.exit_code == 1
     assert "Error:" in result.stderr
@@ -293,7 +293,7 @@ def test_no_strict_emits_catch_all_warning_but_succeeds(tmp_path):
     cfg.write_text(_NO_CATCH_ALL_CFG)
     result = runner.invoke(
         app,
-        ["--config", str(cfg), "--output-dir", str(tmp_path), "--overwrite"],
+        ["--config", str(cfg), "--output", str(tmp_path), "--overwrite"],
     )
     assert result.exit_code == 0
     assert "Warning:" in result.stderr
@@ -311,7 +311,7 @@ def test_unknown_class_exits_one(tmp_path):
         "        - range: auto\n"
         "          client-class: zZqXX_no_match_here\n"
     )
-    result = runner.invoke(app, ["--config", str(cfg), "--output-dir", str(tmp_path)])
+    result = runner.invoke(app, ["--config", str(cfg), "--output", str(tmp_path)])
     assert result.exit_code == 1
     assert "Error:" in result.stderr
     assert "unknown client-class" in result.stderr
@@ -332,7 +332,7 @@ def test_strict_does_not_swallow_real_errors(tmp_path):
     )
     result = runner.invoke(
         app,
-        ["--config", str(cfg), "--output-dir", str(tmp_path), "--strict"],
+        ["--config", str(cfg), "--output", str(tmp_path), "--strict"],
     )
     assert result.exit_code == 1
     assert "unknown client-class" in result.stderr
@@ -360,7 +360,7 @@ def test_output_schema_failure_exits_one_and_writes_no_file(tmp_path, monkeypatc
     cfg = tmp_path / "config.yaml"
     cfg.write_text("dhcp4:\n  subnets: []\n")
     result = runner.invoke(
-        app, ["--config", str(cfg), "--output-dir", str(tmp_path), "--overwrite"]
+        app, ["--config", str(cfg), "--output", str(tmp_path), "--overwrite"]
     )
     assert result.exit_code == 1
     assert "Error:" in result.stderr
@@ -381,7 +381,7 @@ def test_output_schema_happy_path_unchanged(tmp_path):
         "        - range: 10.0.1.10 - 10.0.1.50\n"
     )
     result = runner.invoke(
-        app, ["--config", str(cfg), "--output-dir", str(tmp_path), "--overwrite"]
+        app, ["--config", str(cfg), "--output", str(tmp_path), "--overwrite"]
     )
     assert result.exit_code == 0
     assert (tmp_path / "kea-dhcp4.conf").exists()
@@ -422,7 +422,7 @@ def test_output_schema_collect_all_across_protocols(tmp_path, monkeypatch):
         '    - subnet: "2001:db8:1::/64"\n'
     )
     result = runner.invoke(
-        app, ["--config", str(cfg), "--output-dir", str(tmp_path), "--overwrite"]
+        app, ["--config", str(cfg), "--output", str(tmp_path), "--overwrite"]
     )
     assert result.exit_code == 1
     # Both protocols' schema violations appear (collect-all across protocols).
@@ -453,7 +453,7 @@ def test_analysis_only_valid_config_no_json_files(tmp_path):
     cfg = tmp_path / "config.yaml"
     cfg.write_text("dhcp4:\n  subnets: []\n")
     result = runner.invoke(
-       app, ["--config", str(cfg), "--output-dir", str(tmp_path), "--analysis-only"]
+       app, ["--config", str(cfg), "--output", str(tmp_path), "--analysis-only"]
     )
     assert result.exit_code == 0
     # No kea-dhcp4.conf files (timestamped or canonical)
@@ -497,7 +497,7 @@ def test_analysis_flag_with_generation_valid_exits_zero(tmp_path):
     cfg = tmp_path / "config.yaml"
     cfg.write_text("dhcp4:\n  subnets: []\n")
     result = runner.invoke(
-       app, ["--config", str(cfg), "--output-dir", str(tmp_path), "--analysis"]
+       app, ["--config", str(cfg), "--output", str(tmp_path), "--analysis"]
     )
     assert result.exit_code == 0
     # Should have 2 paths on stdout: dhcp4 JSON and analysis file
@@ -512,7 +512,7 @@ def test_analysis_flag_with_generation_writes_both_files(tmp_path):
     cfg = tmp_path / "config.yaml"
     cfg.write_text("dhcp4:\n  subnets: []\n")
     result = runner.invoke(
-       app, ["--config", str(cfg), "--output-dir", str(tmp_path), "--analysis"]
+       app, ["--config", str(cfg), "--output", str(tmp_path), "--analysis"]
     )
     assert result.exit_code == 0
     # Check JSON file exists
@@ -528,7 +528,7 @@ def test_analysis_flag_with_generation_not_on_stdout(tmp_path):
     cfg = tmp_path / "config.yaml"
     cfg.write_text("dhcp4:\n  subnets: []\n")
     result = runner.invoke(
-       app, ["--config", str(cfg), "--output-dir", str(tmp_path), "--analysis"]
+       app, ["--config", str(cfg), "--output", str(tmp_path), "--analysis"]
     )
     assert result.exit_code == 0
     # Report headers should NOT be in stdout (only file paths)
@@ -543,7 +543,7 @@ def test_analysis_flag_with_dhcp6_only(tmp_path):
     cfg = tmp_path / "config.yaml"
     cfg.write_text("dhcp6:\n  subnets:\n    - subnet: \"2001:db8:1::/64\"\n")
     result = runner.invoke(
-       app, ["--config", str(cfg), "--output-dir", str(tmp_path), "--analysis"]
+       app, ["--config", str(cfg), "--output", str(tmp_path), "--analysis"]
     )
     assert result.exit_code == 0
     paths = [line for line in result.stdout.splitlines() if line.strip()]
@@ -564,7 +564,7 @@ def test_analysis_flag_dual_stack(tmp_path):
        "    - subnet: \"2001:db8:1::/64\"\n"
     )
     result = runner.invoke(
-       app, ["--config", str(cfg), "--output-dir", str(tmp_path), "--analysis"]
+       app, ["--config", str(cfg), "--output", str(tmp_path), "--analysis"]
     )
     assert result.exit_code == 0
     paths = [line for line in result.stdout.splitlines() if line.strip()]
@@ -579,7 +579,7 @@ def test_no_flag_unchanged_no_analysis(tmp_path):
     cfg = tmp_path / "config.yaml"
     cfg.write_text("dhcp4:\n  subnets: []\n")
     result = runner.invoke(
-       app, ["--config", str(cfg), "--output-dir", str(tmp_path)]
+       app, ["--config", str(cfg), "--output", str(tmp_path)]
     )
     assert result.exit_code == 0
     # Should have exactly 1 path (dhcp4 JSON only)
@@ -599,7 +599,7 @@ def test_analysis_only_wins_over_analysis(tmp_path):
        [
            "--config",
            str(cfg),
-           "--output-dir",
+           "--output",
            str(tmp_path),
            "--analysis",
            "--analysis-only",
@@ -621,7 +621,7 @@ def test_analysis_flag_respects_overwrite(tmp_path):
        [
            "--config",
            str(cfg),
-           "--output-dir",
+           "--output",
            str(tmp_path),
            "--analysis",
            "--overwrite",
@@ -637,7 +637,7 @@ def test_analysis_flag_respects_overwrite(tmp_path):
 
 
 def test_analysis_flag_respects_output_dir(tmp_path):
-    """AC: --analysis --output-dir writes analysis file to specified directory."""
+    """AC: --analysis --output writes analysis file to specified directory."""
     cfg = tmp_path / "config.yaml"
     cfg.write_text("dhcp4:\n  subnets: []\n")
     out_dir = tmp_path / "output"
@@ -647,7 +647,7 @@ def test_analysis_flag_respects_output_dir(tmp_path):
        [
            "--config",
            str(cfg),
-           "--output-dir",
+           "--output",
            str(out_dir),
            "--analysis",
        ],

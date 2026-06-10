@@ -209,6 +209,9 @@ __marimo__/
 # Generated Kea config outputs (CLI writes these to cwd by default)
 kea-dhcp[46]-*.conf
 
+# Generated files inside the default --output directory (keep the dir + its README)
+/output/kea-*
+
 # Local-only reference material (user's production Kea client-class source of truth)
 reference/
 

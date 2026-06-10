@@ -62,17 +62,20 @@ This installs the `kea-confgen` console command.
 ## Quick start
 
 ```bash
-# Generate from one of the bundled samples (timestamped filename)
+# Generate from one of the bundled samples.
+# Files are written to ./output/ by default (created if missing), with a
+# timestamped filename; the path is printed to stdout.
 kea-confgen -c samples/office-dhcp4.yaml
-# -> kea-dhcp4-20260610-0042.conf   (path printed to stdout)
+# -> output/kea-dhcp4-20260610-0042.conf
 
-# Write to a stable, canonical filename instead of a timestamped one
-kea-confgen -c samples/dual-stack.yaml --overwrite
-# -> kea-dhcp4.conf
-# -> kea-dhcp6.conf
+# Write to a stable, canonical filename instead of a timestamped one,
+# into a directory of your choosing.
+kea-confgen -c samples/dual-stack.yaml --output out/ --overwrite
+# -> out/kea-dhcp4.conf
+# -> out/kea-dhcp6.conf
 
 # Validate the generated file with Kea itself (Kea 3.x)
-kea-dhcp4 -t kea-dhcp4.conf
+kea-dhcp4 -t out/kea-dhcp4.conf
 ```
 
 Generated file paths are written to **stdout**, one per line (pipeline-friendly);
@@ -87,6 +90,7 @@ kea-confgen --config <file.yaml> [options]
 | Option | Description |
 |--------|-------------|
 | `-c`, `--config PATH` | Path to the YAML service definition (required). |
+| `-o`, `--output PATH` | Directory to write generated files into (created if missing; default: `./output`). |
 | `--overwrite` | Write the canonical `kea-<protocol>.conf` (overwriting it) instead of a timestamped filename. |
 | `--strict` | Promote warnings (e.g. a subnet with no catch-all pool) to errors. |
 | `--analysis` | Also write a human-readable analysis report to `kea-analysis-<ts>.txt`; its path is printed to stdout alongside the JSON paths. |

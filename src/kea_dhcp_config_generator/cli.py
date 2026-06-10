@@ -56,11 +56,11 @@ def main(
         "--overwrite",
         help="Write to canonical filename (kea-<protocol>.conf); overwrite if it exists.",
     ),
-    output_dir: Path = typer.Option(
-        Path("."),
-        "--output-dir",
-        hidden=True,
-        help="Directory to write generated files (default: current directory).",
+    output: Path = typer.Option(
+        Path("output"),
+        "--output",
+        "-o",
+        help="Directory to write generated files (created if missing; default: ./output).",
     ),
     strict: bool = typer.Option(
         False,
@@ -125,14 +125,22 @@ def main(
             raise typer.Exit(code=0)
         
         # analysis (generation + analysis): continue to generate JSON below
-    
+
+    # Ensure the output directory exists before writing (supports --output dirs
+    # like ./output that are not created yet).
+    try:
+        output.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        typer.echo(f"Error: cannot create output directory {output}: {exc}", err=True)
+        raise typer.Exit(code=2) from None
+
     # Generate JSON output (normal path or generation+analysis path)
     try:
         try:
             result = api._build_generated_outputs(
                 validated_config,
                 library,
-                output_dir,
+                output,
                 overwrite,
                 warnings,
             )
@@ -164,7 +172,7 @@ def main(
         )
         report = analysis_report.generate_report(validated_config, validation_result)
         analysis_path = writer.write_analysis(
-            report, output_dir, overwrite=overwrite
+            report, output, overwrite=overwrite
         )
         typer.echo(str(analysis_path))
     
