@@ -1,0 +1,37 @@
+# Dual-stack (DHCPv4 + DHCPv6) service definition. A single run produces both
+# kea-dhcp4-<ts>.conf and kea-dhcp6-<ts>.conf.
+#
+#   kea-confgen -c samples/dual-stack.yaml --overwrite
+# -> writes kea-dhcp4.conf and kea-dhcp6.conf
+
+dhcp4:
+  valid-lifetime: 12h
+  dns-servers: ["192.168.1.1"]
+  routers: ["192.168.1.1"]
+  subnets:
+    - subnet: 192.168.1.0/24
+      pools:
+        - range: 192.168.1.100 - 192.168.1.200
+          client-class: iOS_14_17
+        - range: 192.168.1.201 - 192.168.1.250   # catch-all
+
+dhcp6:
+  valid-lifetime: 12h
+  preferred-lifetime: 8h
+  dns-servers: ["2001:4860:4860::8888"]
+  subnets:
+    - subnet: "2001:db8:1::/64"
+      pools:
+        # NA (non-temporary address) pool — hands out individual IPv6 addresses.
+        - pool-type: na
+          range: auto
+        # PD (prefix delegation) pool — hands out /64s carved from 2001:db8:1::/48.
+        - pool-type: pd
+          prefix: "2001:db8:1::"
+          prefix-len: 48
+          delegated-len: 64
+      reservations:
+        # DHCPv6 reservations are DUID-based (not MAC).
+        - duid: "00:03:00:01:aa:bb:cc:dd:ee:ff"
+          ip-address: "2001:db8:1::100"
+          hostname: nas-01

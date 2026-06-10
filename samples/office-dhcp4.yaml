@@ -1,0 +1,38 @@
+# Office DHCPv4 with timers, options, a reserved-address printer, and a
+# fingerprint-classified pool.
+#
+#   kea-confgen -c samples/office-dhcp4.yaml --overwrite
+# -> writes kea-dhcp4.conf
+
+# Pin the fingerprint rule library version you validated against. A mismatch
+# with the installed package emits a warning (does not fail the run).
+fingerprint_library_version: "0.1.0"
+
+dhcp4:
+  valid-lifetime: 24h
+  renew-timer: 12h
+  rebind-timer: 21h
+  dns-servers: ["10.0.0.1", "8.8.8.8"]
+  domain-name: corp.example.com
+  ntp-servers: ["10.0.0.1"]
+  routers: ["10.0.0.1"]
+
+  subnets:
+    - subnet: 10.0.10.0/24
+      # Per-subnet overrides win over the global values above.
+      valid-lifetime: 2h
+      pools:
+        # A class-restricted pool: only clients matching the iOS_14_17
+        # fingerprint rule draw from this range. The rule is expanded into a
+        # top-level Kea `client-classes` entry automatically.
+        - range: 10.0.10.50 - 10.0.10.99
+          client-class: iOS_14_17
+        # A catch-all pool (no client-class) so unmatched clients still get a
+        # lease. `skip-start` keeps the first 10 host addresses free.
+        - range: auto
+          skip-start: 10
+      reservations:
+        # MAC-based static reservation.
+        - hw-address: "aa:bb:cc:dd:ee:ff"
+          ip-address: 10.0.10.50
+          hostname: printer-01

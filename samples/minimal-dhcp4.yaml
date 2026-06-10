@@ -1,0 +1,13 @@
+# Minimal DHCPv4 service definition.
+#
+# One subnet, one auto-sized pool. Run:
+#   kea-confgen -c samples/minimal-dhcp4.yaml
+# -> writes kea-dhcp4-<timestamp>.conf
+dhcp4:
+  valid-lifetime: 12h          # accepts seconds or a unit suffix: d / h / m / s
+  dns-servers: ["10.0.0.1", "8.8.8.8"]
+  routers: ["10.0.0.1"]
+  subnets:
+    - subnet: 10.0.10.0/24
+      pools:
+        - range: auto          # first usable .. last usable, network/broadcast excluded
