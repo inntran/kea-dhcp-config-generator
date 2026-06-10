@@ -346,16 +346,16 @@ def test_strict_does_not_swallow_real_errors(tmp_path):
 
 def test_output_schema_failure_exits_one_and_writes_no_file(tmp_path, monkeypatch):
     """AC #7: a builder bug producing schema-invalid output blocks the write."""
-    from kea_dhcp_config_generator import cli as cli_module
+    from kea_dhcp_config_generator.builders import dhcp4 as dhcp4_builder
 
-    real_build = cli_module.dhcp4_builder.build
+    real_build = dhcp4_builder.build
 
     def broken_build(*args, **kwargs):
         result = real_build(*args, **kwargs)
         result["Dhcp4"]["valid-lifetime"] = "forever"  # schema violation
         return result
 
-    monkeypatch.setattr(cli_module.dhcp4_builder, "build", broken_build)
+    monkeypatch.setattr(dhcp4_builder, "build", broken_build)
 
     cfg = tmp_path / "config.yaml"
     cfg.write_text("dhcp4:\n  subnets: []\n")
@@ -393,10 +393,11 @@ def test_output_schema_collect_all_across_protocols(tmp_path, monkeypatch):
     Both builders are patched to emit a schema-invalid value; the run must report
     both violations and write neither file (collect-all before any write).
     """
-    from kea_dhcp_config_generator import cli as cli_module
+    from kea_dhcp_config_generator.builders import dhcp4 as dhcp4_builder
+    from kea_dhcp_config_generator.builders import dhcp6 as dhcp6_builder
 
-    real_build4 = cli_module.dhcp4_builder.build
-    real_build6 = cli_module.dhcp6_builder.build
+    real_build4 = dhcp4_builder.build
+    real_build6 = dhcp6_builder.build
 
     def broken_build4(*args, **kwargs):
         result = real_build4(*args, **kwargs)
@@ -408,8 +409,8 @@ def test_output_schema_collect_all_across_protocols(tmp_path, monkeypatch):
         result["Dhcp6"]["valid-lifetime"] = "forever"  # schema violation
         return result
 
-    monkeypatch.setattr(cli_module.dhcp4_builder, "build", broken_build4)
-    monkeypatch.setattr(cli_module.dhcp6_builder, "build", broken_build6)
+    monkeypatch.setattr(dhcp4_builder, "build", broken_build4)
+    monkeypatch.setattr(dhcp6_builder, "build", broken_build6)
 
     cfg = tmp_path / "config.yaml"
     cfg.write_text(

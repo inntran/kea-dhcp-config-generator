@@ -5,6 +5,7 @@ This module is extended in-place; the KeaConfigError base class is stable.
 """
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 
@@ -92,3 +93,12 @@ class ValidationResult:
 
     def __post_init__(self) -> None:
         self.is_valid = len(self.errors) == 0
+
+
+@dataclass
+class GenerationResult:
+    """Aggregated result of a successful generation pass."""
+
+    dhcp4_path: Path | None = None
+    dhcp6_path: Path | None = None
+    warnings: list[ConfigWarning] = field(default_factory=list)

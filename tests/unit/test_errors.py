@@ -212,6 +212,7 @@ def test_validate_strict_false_keeps_warnings_non_fatal(
                     suggestion="use new name",
                 )
             ],
+            None,
         ),
     )
 
@@ -243,6 +244,7 @@ def test_validate_strict_true_promotes_warnings_to_errors(
                     suggestion="use new name",
                 )
             ],
+            None,
         ),
     )
 
