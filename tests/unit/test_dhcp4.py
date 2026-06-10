@@ -571,7 +571,8 @@ def test_pool_key_order_with_client_class():
 
 
 def test_subnet_key_order_with_client_class():
-    """AC #7: when client-class is set, it appears after rebind-timer and before option-data."""
+    """AC #7: when a class is set, the list-form client-classes selector appears
+    after rebind-timer and before option-data."""
     config = _cfg(
         {
             "subnets": [
@@ -585,10 +586,14 @@ def test_subnet_key_order_with_client_class():
         }
     )
     result = build(config)
-    subnet_keys = list(result["Dhcp4"]["subnet4"][0].keys())
+    subnet = result["Dhcp4"]["subnet4"][0]
+    subnet_keys = list(subnet.keys())
 
-    # client-class sits between rebind-timer (absent here) and option-data
-    assert subnet_keys.index("client-class") < subnet_keys.index("option-data")
+    # Subnet selector is emitted in Kea 3.0 list form, never the deprecated singular.
+    assert subnet["client-classes"] == ["VoIP"]
+    assert "client-class" not in subnet
+    # client-classes sits between rebind-timer (absent here) and option-data
+    assert subnet_keys.index("client-classes") < subnet_keys.index("option-data")
     # id and subnet always lead
     assert subnet_keys[0] == "id"
     assert subnet_keys[1] == "subnet"
@@ -1086,7 +1091,10 @@ def test_subnet_client_class_emitted_as_top_level_entry(fp_lib):
     )
     result = build(config, fingerprint_library=fp_lib)
     assert result["Dhcp4"]["client-classes"][0]["name"] == "Windows_10_11"
-    assert result["Dhcp4"]["subnet4"][0]["client-class"] == "Windows_10_11"
+    # Subnet selector uses the Kea 3.0 list form, not the deprecated singular key.
+    subnet = result["Dhcp4"]["subnet4"][0]
+    assert subnet["client-classes"] == ["Windows_10_11"]
+    assert "client-class" not in subnet
 
 
 def test_subnet_client_class_precedes_later_pool_class(fp_lib):
@@ -1117,8 +1125,28 @@ def test_custom_subnet_client_class_does_not_emit_top_level_entry(fp_lib):
         }
     )
     result = build(config, fingerprint_library=fp_lib)
+    # No top-level client-classes array (the custom name resolves to no rule)...
     assert "client-classes" not in result["Dhcp4"]
-    assert result["Dhcp4"]["subnet4"][0]["client-class"] == "MyCustomClass"
+    # ...but the subnet still carries the selector, in Kea 3.0 list form.
+    subnet = result["Dhcp4"]["subnet4"][0]
+    assert subnet["client-classes"] == ["MyCustomClass"]
+    assert "client-class" not in subnet
+
+
+def test_subnet_client_class_never_emits_deprecated_singular_key():
+    """Regression: Kea 3.0 deprecates the singular subnet "client-class" string
+    (BaseNetworkParser logs DHCPSRV_CLIENT_CLASS_DEPRECATED and rejects setting
+    both forms). The builder must emit only the list-form "client-classes"."""
+    config = _cfg(
+        {
+            "subnets": [
+                {"subnet": "10.0.1.0/24", "client-class": "CableModem"},
+            ]
+        }
+    )
+    subnet = build(config)["Dhcp4"]["subnet4"][0]
+    assert subnet["client-classes"] == ["CableModem"]
+    assert "client-class" not in subnet
 
 
 def test_pool_emits_list_form_not_singular_client_class(fp_lib):

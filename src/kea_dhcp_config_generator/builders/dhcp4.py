@@ -7,7 +7,7 @@ Public API:
 Key ordering follows Kea documentation examples (not alphabetical):
     Dhcp4 level:  valid-lifetime → renew-timer → rebind-timer → option-data
                   → client-classes → subnet4
-    Subnet level: id → subnet → valid-lifetime → renew-timer → rebind-timer → client-class
+    Subnet level: id → subnet → valid-lifetime → renew-timer → rebind-timer → client-classes
                   → option-data → pools → reservations
     Pool level:   pool → client-classes (only when set)
     Reservation:  hw-address → ip-address → [hostname] → [option-data]
@@ -244,7 +244,7 @@ def _build_subnet4(
           from 1 in YAML order.
 
     Subnet key order (Kea-natural):
-        id → subnet → valid-lifetime → renew-timer → rebind-timer → client-class
+        id → subnet → valid-lifetime → renew-timer → rebind-timer → client-classes
         → option-data → pools → reservations
     """
     # Validate all-or-none ID consistency.
@@ -297,9 +297,13 @@ def _build_subnet4(
         if rebind_timer is not None:
             subnet_dict["rebind-timer"] = rebind_timer
 
-        # Subnet-level client-class selector (string form; Kea 3.x subnet selector)
+        # Subnet-level client-class selector. Kea 3.0 renamed the singular
+        # "client-class" string to the list-form "client-classes"; the singular
+        # form is deprecated (BaseNetworkParser::getClientClassesElem logs
+        # DHCPSRV_CLIENT_CLASS_DEPRECATED and rejects setting both), so we emit
+        # the list form only — consistent with pools and host reservations.
         if subnet.client_class:
-            subnet_dict["client-class"] = subnet.client_class
+            subnet_dict["client-classes"] = [subnet.client_class]
 
         # Subnet-specific option-data; option profiles contribute the base.
         subnet_option_data = _scope_option_data(subnet)
