@@ -476,3 +476,157 @@ def test_dhcp6_only_short_circuit(tmp_path):
     errors, warnings = _run_class(tmp_path, yaml_text)
     assert errors == []
     assert warnings == []
+
+
+# ---- Story 5.3 tests: DHCPv6 semantic validation ----
+
+
+def test_dhcp6_overlapping_subnets_yields_error(tmp_path):
+    yaml_text = (
+        "dhcp6:\n"
+        "  subnets:\n"
+        '    - subnet: "2001:db8::/32"\n'
+        '    - subnet: "2001:db8:1::/48"\n'
+    )
+    errors = _run(tmp_path, yaml_text)
+    assert len(errors) == 1
+    assert isinstance(errors[0], SubnetConfigError)
+    assert errors[0].yaml_path == "dhcp6.subnets[1]"
+    assert "overlaps" in errors[0].message
+    assert errors[0].line is not None
+
+
+def test_dhcp6_non_overlapping_subnets_no_error(tmp_path):
+    yaml_text = (
+        "dhcp6:\n"
+        "  subnets:\n"
+        '    - subnet: "2001:db8:1::/64"\n'
+        '    - subnet: "2001:db8:2::/64"\n'
+    )
+    assert _run(tmp_path, yaml_text) == []
+
+
+def test_dhcp6_na_pool_out_of_bounds_yields_error(tmp_path):
+    yaml_text = (
+        "dhcp6:\n"
+        "  subnets:\n"
+        '    - subnet: "2001:db8:1::/64"\n'
+        "      pools:\n"
+        "        - pool-type: na\n"
+        '          range: "2001:db8:2::1 - 2001:db8:2::ff"\n'
+    )
+    errors = _run(tmp_path, yaml_text)
+    assert len(errors) == 1
+    assert errors[0].yaml_path == "dhcp6.subnets[0].pools[0].range"
+    assert "outside subnet" in errors[0].message
+    assert "valid range" in (errors[0].suggestion or "")
+
+
+def test_dhcp6_na_pool_in_bounds_no_error(tmp_path):
+    yaml_text = (
+        "dhcp6:\n"
+        "  subnets:\n"
+        '    - subnet: "2001:db8:1::/64"\n'
+        "      pools:\n"
+        "        - pool-type: na\n"
+        '          range: "2001:db8:1::100 - 2001:db8:1::200"\n'
+    )
+    assert _run(tmp_path, yaml_text) == []
+
+
+def test_dhcp6_na_pool_out_of_bounds_on_slash128_no_crash(tmp_path):
+    """Edge case: a /128 subnet must not crash the suggestion builder (no under/overflow)."""
+    yaml_text = (
+        "dhcp6:\n"
+        "  subnets:\n"
+        '    - subnet: "::/128"\n'
+        "      pools:\n"
+        "        - pool-type: na\n"
+        '          range: "2001:db8::1 - 2001:db8::2"\n'
+    )
+    errors = _run(tmp_path, yaml_text)
+    assert len(errors) == 1
+    assert "outside subnet" in errors[0].message
+    # Suggestion is present and clamped to the prefix bounds (no exception).
+    assert errors[0].suggestion is not None
+    assert "valid range" in errors[0].suggestion
+
+
+def test_dhcp6_pd_pool_not_range_checked(tmp_path):
+    yaml_text = (
+        "dhcp6:\n"
+        "  subnets:\n"
+        '    - subnet: "2001:db8:1::/64"\n'
+        "      pools:\n"
+        "        - pool-type: pd\n"
+        '          prefix: "2001:db8:1::"\n'
+        "          prefix-len: 48\n"
+        "          delegated-len: 64\n"
+    )
+    assert _run(tmp_path, yaml_text) == []
+
+
+def test_dhcp6_duplicate_duid_yields_error(tmp_path):
+    yaml_text = (
+        "dhcp6:\n"
+        "  subnets:\n"
+        '    - subnet: "2001:db8:1::/64"\n'
+        "      reservations:\n"
+        '        - duid: "00:03:00:01:aa:bb:cc:dd:ee:ff"\n'
+        '          ip-address: "2001:db8:1::10"\n'
+        '        - duid: "00:03:00:01:aa:bb:cc:dd:ee:ff"\n'
+        '          ip-address: "2001:db8:1::11"\n'
+    )
+    errors = _run(tmp_path, yaml_text)
+    assert len(errors) == 1
+    assert errors[0].yaml_path == "dhcp6.subnets[0].reservations[1]"
+    assert "duplicate reservation duid" in errors[0].message
+
+
+def test_dhcp6_same_duid_different_subnets_no_error(tmp_path):
+    yaml_text = (
+        "dhcp6:\n"
+        "  subnets:\n"
+        '    - subnet: "2001:db8:1::/64"\n'
+        "      reservations:\n"
+        '        - duid: "00:03:00:01:aa:bb:cc:dd:ee:ff"\n'
+        '    - subnet: "2001:db8:2::/64"\n'
+        "      reservations:\n"
+        '        - duid: "00:03:00:01:aa:bb:cc:dd:ee:ff"\n'
+    )
+    assert _run(tmp_path, yaml_text) == []
+
+
+def test_dhcp6_unknown_pool_class_yields_error(tmp_path):
+    yaml_text = (
+        "dhcp6:\n"
+        "  subnets:\n"
+        '    - subnet: "2001:db8:1::/64"\n'
+        "      pools:\n"
+        "        - pool-type: na\n"
+        "          range: auto\n"
+        "          client-class: zZqXX_bogus_class\n"
+    )
+    errors, warnings = _run_class(tmp_path, yaml_text)
+    assert len(errors) == 1
+    assert isinstance(errors[0], FingerprintError)
+    assert errors[0].yaml_path == "dhcp6.subnets[0].pools[0].client-class"
+    assert "unknown client-class" in errors[0].message
+
+
+def test_dual_stack_collect_all_semantic_errors(tmp_path):
+    """Both dhcp4 and dhcp6 errors are returned in a single pass."""
+    yaml_text = (
+        "dhcp4:\n"
+        "  subnets:\n"
+        "    - subnet: 10.0.4.0/23\n"
+        "    - subnet: 10.0.4.0/24\n"
+        "dhcp6:\n"
+        "  subnets:\n"
+        '    - subnet: "2001:db8::/32"\n'
+        '    - subnet: "2001:db8:1::/48"\n'
+    )
+    errors = _run(tmp_path, yaml_text)
+    paths = {e.yaml_path for e in errors}
+    assert "dhcp4.subnets[1]" in paths
+    assert "dhcp6.subnets[1]" in paths

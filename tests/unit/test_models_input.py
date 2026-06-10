@@ -14,6 +14,7 @@ Tests cover Story 2.4 acceptance criteria:
 """
 
 from io import StringIO
+from ipaddress import IPv6Network
 
 import pytest
 from ruamel.yaml import YAML
@@ -55,7 +56,8 @@ dhcp6:
     config = parse(raw)
     assert isinstance(config, GlobalConfig)
     assert config.dhcp6 is not None
-    assert config.dhcp6.subnets[0].subnet == "2001:db8::/48"
+    assert isinstance(config.dhcp6.subnets[0].subnet, IPv6Network)
+    assert config.dhcp6.subnets[0].subnet == IPv6Network("2001:db8::/48")
 
 
 def test_parse_valid_both_protocols():
@@ -431,16 +433,160 @@ def test_dhcp6_pd_pool():
 dhcp6:
   subnets:
     - subnet: "2001:db8::/48"
-      pd-pools:
-        - prefix: "2001:db8:1::"
+      pools:
+        - pool-type: pd
+          prefix: "2001:db8:1::"
           prefix-len: 48
           delegated-len: 64
 """)
     config = parse(raw)
-    pd = config.dhcp6.subnets[0].pd_pools[0]
+    pd = config.dhcp6.subnets[0].pools[0]
+    assert pd.pool_type == "pd"
     assert pd.prefix == "2001:db8:1::"
     assert pd.prefix_len == 48
     assert pd.delegated_len == 64
+
+
+def test_dhcp6_na_pool_via_discriminator():
+    raw = _load("""
+dhcp6:
+  subnets:
+    - subnet: "2001:db8:1::/64"
+      pools:
+        - pool-type: na
+          range: "2001:db8:1::100 - 2001:db8:1::200"
+          client-class: iOS_17
+""")
+    config = parse(raw)
+    na = config.dhcp6.subnets[0].pools[0]
+    assert na.pool_type == "na"
+    assert na.range == "2001:db8:1::100 - 2001:db8:1::200"
+    assert na.client_class == "iOS_17"
+
+
+def test_dhcp6_mixed_na_pd_order_preserved():
+    raw = _load("""
+dhcp6:
+  subnets:
+    - subnet: "2001:db8::/48"
+      pools:
+        - pool-type: na
+          range: auto
+        - pool-type: pd
+          prefix: "2001:db8:1::"
+          prefix-len: 48
+          delegated-len: 64
+""")
+    config = parse(raw)
+    pools = config.dhcp6.subnets[0].pools
+    assert [p.pool_type for p in pools] == ["na", "pd"]
+
+
+def test_dhcp6_pool_missing_pool_type_rejected():
+    raw = _load("""
+dhcp6:
+  subnets:
+    - subnet: "2001:db8::/48"
+      pools:
+        - range: auto
+""")
+    with pytest.raises(ExceptionGroup) as excinfo:
+        parse(raw)
+    errs = excinfo.value.exceptions
+    assert all(isinstance(e, ConfigError) for e in errs)
+    assert any("dhcp6.subnets[0].pools[0]" in e.yaml_path for e in errs)
+
+
+def test_dhcp6_pool_invalid_pool_type_rejected():
+    raw = _load("""
+dhcp6:
+  subnets:
+    - subnet: "2001:db8::/48"
+      pools:
+        - pool-type: bogus
+          range: auto
+""")
+    with pytest.raises(ExceptionGroup) as excinfo:
+        parse(raw)
+    errs = excinfo.value.exceptions
+    assert all(isinstance(e, ConfigError) for e in errs)
+    assert any("dhcp6.subnets[0].pools[0]" in e.yaml_path for e in errs)
+
+
+# ---------------------------------------------------------------------------
+# DHCPv6 subnet prefix typing (Story 5.1 AC #2)
+# ---------------------------------------------------------------------------
+
+
+def test_dhcp6_subnet_host_bits_tolerated():
+    raw = _load("""
+dhcp6:
+  subnets:
+    - subnet: "2001:db8:1::1/64"
+""")
+    config = parse(raw)
+    assert config.dhcp6.subnets[0].subnet == IPv6Network("2001:db8:1::/64")
+
+
+def _assert_ipv6_prefix_error(raw):
+    with pytest.raises(ExceptionGroup) as excinfo:
+        parse(raw)
+    errs = excinfo.value.exceptions
+    assert len(errs) == 1
+    err = errs[0]
+    assert isinstance(err, ConfigError)
+    assert err.yaml_path == "dhcp6.subnets[0].subnet"
+    assert "IPv6 prefix" in err.message
+
+
+def test_dhcp6_subnet_ipv4_cidr_rejected():
+    raw = _load("""
+dhcp6:
+  subnets:
+    - subnet: "10.0.0.0/24"
+""")
+    _assert_ipv6_prefix_error(raw)
+
+
+def test_dhcp6_subnet_malformed_string_rejected():
+    raw = _load("""
+dhcp6:
+  subnets:
+    - subnet: "not-a-prefix"
+""")
+    _assert_ipv6_prefix_error(raw)
+
+
+def test_dhcp6_subnet_bare_address_rejected():
+    raw = _load("""
+dhcp6:
+  subnets:
+    - subnet: "2001:db8::1"
+""")
+    _assert_ipv6_prefix_error(raw)
+
+
+def test_dhcp6_subnet_missing_field_rejected():
+    raw = _load("""
+dhcp6:
+  subnets:
+    - {}
+""")
+    with pytest.raises(ExceptionGroup) as excinfo:
+        parse(raw)
+    errs = excinfo.value.exceptions
+    assert any(e.yaml_path == "dhcp6.subnets[0].subnet" for e in errs)
+
+
+def test_dhcp6_subnet_non_string_rejected_via_collect_all():
+    """A non-string subnet (e.g. a YAML list) must surface as a ConfigError, not a
+    bare TypeError that escapes parse()'s ExceptionGroup collect-all path."""
+    raw = _load("""
+dhcp6:
+  subnets:
+    - subnet: [1, 2, 3]
+""")
+    _assert_ipv6_prefix_error(raw)
 
 
 def test_dhcp6_host_reservation_duid():

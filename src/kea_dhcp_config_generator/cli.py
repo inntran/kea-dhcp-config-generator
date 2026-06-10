@@ -6,6 +6,7 @@ import typer
 
 from kea_dhcp_config_generator import loader, writer
 from kea_dhcp_config_generator.builders import dhcp4 as dhcp4_builder
+from kea_dhcp_config_generator.builders import dhcp6 as dhcp6_builder
 from kea_dhcp_config_generator.fingerprints import DHCPFingerprint
 from kea_dhcp_config_generator.models import input as input_models
 from kea_dhcp_config_generator.validation import (
@@ -101,7 +102,7 @@ def main(
 
     # Stage 2.5: Semantic validation — collect-all semantic errors → exit 1
     library: DHCPFingerprint | None = None
-    if config_model.dhcp4 is not None:
+    if config_model.dhcp4 is not None or config_model.dhcp6 is not None:
         library = DHCPFingerprint(
             pinned_version=config_model.fingerprint_library_version
         )
@@ -151,11 +152,15 @@ def main(
         try:
             built_outputs: list[tuple[dict, str]] = []
             if config_model.dhcp4 is not None:
-                assert library is not None  # built in Stage 2.5 when dhcp4 is set
+                assert library is not None  # built in Stage 2.5 when dhcp4/dhcp6 set
                 built_outputs.append(
                     (dhcp4_builder.build(config_model, fingerprint_library=library), "dhcp4")
                 )
-            # Epic 5 will append (dhcp6_builder.build(...), "dhcp6") here.
+            if config_model.dhcp6 is not None:
+                assert library is not None  # built in Stage 2.5 when dhcp4/dhcp6 set
+                built_outputs.append(
+                    (dhcp6_builder.build(config_model, fingerprint_library=library), "dhcp6")
+                )
 
             schema_errors: list[ConfigError] = []
             for built, protocol in built_outputs:
@@ -166,7 +171,10 @@ def main(
                         output_schema.validate_dhcp6(built)
                     else:
                         raise ConfigError(
-                            message=f"Unsupported output protocol for schema validation: {protocol}",
+                            message=(
+                                "Unsupported output protocol for schema "
+                                f"validation: {protocol}"
+                            ),
                             yaml_path="protocol",
                             line=None,
                             suggestion=None,

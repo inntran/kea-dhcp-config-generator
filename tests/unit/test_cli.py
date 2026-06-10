@@ -1,6 +1,5 @@
 """Unit tests for cli.py — I/O contract, exit codes, and error routing."""
 
-import pytest
 from typer.testing import CliRunner
 
 from kea_dhcp_config_generator.cli import app
@@ -27,12 +26,14 @@ def test_valid_dhcp6_only_config_exits_zero(tmp_path):
     assert result.exit_code == 0
 
 
-def test_valid_dhcp6_only_config_stdout_is_empty(tmp_path):
-    """DHCPv6-only config: no DHCPv4 builder yet → stdout empty on success."""
+def test_valid_dhcp6_only_config_writes_dhcp6_path(tmp_path):
+    """DHCPv6-only config: dhcp6 builder writes a kea-dhcp6 file path to stdout."""
     cfg = tmp_path / "config.yaml"
     cfg.write_text("dhcp6:\n  subnets: []\n")
-    result = runner.invoke(app, ["--config", str(cfg)])
-    assert result.stdout == ""
+    result = runner.invoke(app, ["--config", str(cfg), "--output-dir", str(tmp_path)])
+    assert result.exit_code == 0
+    assert "kea-dhcp6" in result.stdout
+    assert result.stdout.strip().count("\n") == 0  # exactly one path line
 
 
 # ---------------------------------------------------------------------------
@@ -117,13 +118,37 @@ def test_empty_config_file_exits_two(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_success_dhcp6_only_stdout_empty(tmp_path):
-    """DHCPv6-only config produces no output file path on stdout."""
+def test_success_dhcp6_only_writes_one_path(tmp_path):
+    """DHCPv6-only config produces exactly one output file path on stdout."""
     cfg = tmp_path / "config.yaml"
     cfg.write_text("dhcp6:\n  subnets: []\n")
-    result = runner.invoke(app, ["--config", str(cfg)])
+    result = runner.invoke(app, ["--config", str(cfg), "--output-dir", str(tmp_path)])
     assert result.exit_code == 0
-    assert result.stdout == ""
+    paths = [line for line in result.stdout.splitlines() if line.strip()]
+    assert len(paths) == 1
+    assert "kea-dhcp6" in paths[0]
+
+
+def test_dual_stack_writes_both_files(tmp_path):
+    """A config with both dhcp4 and dhcp6 writes both files; both paths on stdout."""
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(
+        "dhcp4:\n"
+        "  subnets:\n"
+        "    - subnet: 10.0.1.0/24\n"
+        "dhcp6:\n"
+        "  subnets:\n"
+        "    - subnet: \"2001:db8:1::/64\"\n"
+    )
+    result = runner.invoke(app, ["--config", str(cfg), "--output-dir", str(tmp_path)])
+    assert result.exit_code == 0
+    paths = [line for line in result.stdout.splitlines() if line.strip()]
+    assert len(paths) == 2
+    assert any("kea-dhcp4" in p for p in paths)
+    assert any("kea-dhcp6" in p for p in paths)
+    written = {p.name for p in tmp_path.glob("kea-dhcp*.conf")}
+    assert any(n.startswith("kea-dhcp4") for n in written)
+    assert any(n.startswith("kea-dhcp6") for n in written)
 
 
 # ---------------------------------------------------------------------------
@@ -362,6 +387,47 @@ def test_output_schema_happy_path_unchanged(tmp_path):
     assert (tmp_path / "kea-dhcp4.conf").exists()
 
 
-@pytest.mark.skip(reason="DHCPv6 builder lands in Epic 5 (Story 5.2)")
-def test_output_schema_collect_all_across_protocols(tmp_path):
-    """AC #8 (deferred): when both protocols build, schema errors from both surface in one run."""
+def test_output_schema_collect_all_across_protocols(tmp_path, monkeypatch):
+    """AC #8: when both protocols build, schema errors from both surface in one run.
+
+    Both builders are patched to emit a schema-invalid value; the run must report
+    both violations and write neither file (collect-all before any write).
+    """
+    from kea_dhcp_config_generator import cli as cli_module
+
+    real_build4 = cli_module.dhcp4_builder.build
+    real_build6 = cli_module.dhcp6_builder.build
+
+    def broken_build4(*args, **kwargs):
+        result = real_build4(*args, **kwargs)
+        result["Dhcp4"]["valid-lifetime"] = "forever"  # schema violation
+        return result
+
+    def broken_build6(*args, **kwargs):
+        result = real_build6(*args, **kwargs)
+        result["Dhcp6"]["valid-lifetime"] = "forever"  # schema violation
+        return result
+
+    monkeypatch.setattr(cli_module.dhcp4_builder, "build", broken_build4)
+    monkeypatch.setattr(cli_module.dhcp6_builder, "build", broken_build6)
+
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(
+        "dhcp4:\n"
+        "  subnets:\n"
+        "    - subnet: 10.0.1.0/24\n"
+        "dhcp6:\n"
+        "  subnets:\n"
+        '    - subnet: "2001:db8:1::/64"\n'
+    )
+    result = runner.invoke(
+        app, ["--config", str(cfg), "--output-dir", str(tmp_path), "--overwrite"]
+    )
+    assert result.exit_code == 1
+    # Both protocols' schema violations appear (collect-all across protocols).
+    assert "Dhcp4.valid-lifetime" in result.stderr
+    assert "Dhcp6.valid-lifetime" in result.stderr
+    assert result.stdout == ""
+    # No file written for either protocol.
+    assert not (tmp_path / "kea-dhcp4.conf").exists()
+    assert not (tmp_path / "kea-dhcp6.conf").exists()

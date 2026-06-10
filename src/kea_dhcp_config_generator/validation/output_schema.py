@@ -29,14 +29,14 @@ _DHCP6_VALIDATOR: jsonschema_rs.Validator = jsonschema_rs.validator_for(
 )
 
 
-def _path_to_str(instance_path: list[object]) -> str:
+def _path_to_str(instance_path: list[object], root_label: str = "Dhcp4") -> str:
     """Render a jsonschema-rs instance_path as a dotted/indexed path string.
 
     Example: ['Dhcp4', 'subnet4', 0, 'pools'] → 'Dhcp4.subnet4[0].pools'.
-    Returns 'Dhcp4' for empty paths (the root we always expect to exist).
+    Returns ``root_label`` for empty paths (the root we always expect to exist).
     """
     if not instance_path:
-        return "Dhcp4"
+        return root_label
     parts: list[str] = []
     for segment in instance_path:
         if isinstance(segment, int):
@@ -47,7 +47,7 @@ def _path_to_str(instance_path: list[object]) -> str:
 
 
 def _first_error_to_config_error(
-    validator: jsonschema_rs.Validator, config_dict: dict
+    validator: jsonschema_rs.Validator, config_dict: dict, root_label: str = "Dhcp4"
 ) -> ConfigError | None:
     """Run the validator and convert the first schema error to a ConfigError.
 
@@ -55,7 +55,7 @@ def _first_error_to_config_error(
     (see Story 4.4 AC #4); callers accumulate across protocols themselves.
     """
     for err in validator.iter_errors(config_dict):
-        path_str = _path_to_str(list(err.instance_path))
+        path_str = _path_to_str(list(err.instance_path), root_label)
         return ConfigError(
             message=f"schema violation at {path_str}: {err.message}",
             yaml_path=path_str,
@@ -87,10 +87,17 @@ def validate_dhcp4(config_dict: dict) -> None:
 def validate_dhcp6(config_dict: dict) -> None:
     """Validate a built Kea DHCPv6 dict against the bundled schema.
 
-    The DHCPv6 schema is a permissive stub today (Epic 5 will replace it);
-    any object passes. The function exists so the call site can be uniform
-    across protocols once the DHCPv6 builder lands.
+    Args:
+        config_dict: The dict returned by ``builders.dhcp6.build(...)`` —
+            shape ``{"Dhcp6": {...}}``. **Must NOT include the
+            ``_kea-config-generator`` metadata header that ``writer.py``
+            injects later.**
+
+    Raises:
+        ConfigError: A single error describing the first schema violation
+            found, with ``line=None`` and ``suggestion=None`` (output
+            validation has no YAML source line).
     """
-    err = _first_error_to_config_error(_DHCP6_VALIDATOR, config_dict)
+    err = _first_error_to_config_error(_DHCP6_VALIDATOR, config_dict, root_label="Dhcp6")
     if err is not None:
         raise err

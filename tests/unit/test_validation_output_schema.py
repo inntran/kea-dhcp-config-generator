@@ -76,10 +76,39 @@ def test_validate_dhcp4_accepts_valid_builder_output(tmp_path):
     assert output_schema.validate_dhcp4(built) is None
 
 
-def test_validate_dhcp6_accepts_any_object():
-    """AC stub: DHCPv6 schema is permissive today."""
-    assert output_schema.validate_dhcp6({"Dhcp6": {}}) is None
-    assert output_schema.validate_dhcp6({}) is None
+def test_validate_dhcp6_accepts_valid_builder_output():
+    """DHCPv6 schema (Story 5.2/5.3) accepts a real builder dict."""
+    from kea_dhcp_config_generator.builders import dhcp6 as dhcp6_builder
+
+    cfg = input_models.GlobalConfig.model_validate({
+        "dhcp6": {
+            "subnets": [{
+                "subnet": "2001:db8:1::/64",
+                "pools": [{"pool-type": "na", "range": "auto"}],
+                "reservations": [{
+                    "duid": "00:03:00:01:aa:bb:cc:dd:ee:ff",
+                    "ip-address": "2001:db8:1::100",
+                }],
+            }],
+        }
+    })
+    built = dhcp6_builder.build(cfg, fingerprint_library=DHCPFingerprint())
+    assert output_schema.validate_dhcp6(built) is None
+
+
+def test_validate_dhcp6_rejects_missing_root_key():
+    """Missing Dhcp6 key → ConfigError."""
+    with pytest.raises(ConfigError) as excinfo:
+        output_schema.validate_dhcp6({})
+    assert "Dhcp6" in excinfo.value.message
+
+
+def test_validate_dhcp6_rejects_wrong_type_on_known_key():
+    """A nested type error renders a Dhcp6-rooted path."""
+    bad = {"Dhcp6": {"subnet6": [{"subnet": "2001:db8::/48", "id": "one"}]}}
+    with pytest.raises(ConfigError) as excinfo:
+        output_schema.validate_dhcp6(bad)
+    assert excinfo.value.yaml_path == "Dhcp6.subnet6[0].id"
 
 
 # ---------------------------------------------------------------------------

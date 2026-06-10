@@ -1,8 +1,145 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://kea-dhcp-config-generator/_schema/kea-dhcp6.json",
-  "title": "Kea DHCPv6 configuration (stub, 3.0.x)",
-  "description": "Stub schema. DHCPv6 builder lands in Epic 5 (Story 5.2); this file exists so importlib.resources access succeeds today and validate_dhcp6() is callable. Replace with a partial schema modeled on builders/dhcp6.py output when Epic 5 ships.",
+  "title": "Kea DHCPv6 configuration (partial, 3.0.x)",
+  "description": "Partial JSON Schema covering the subset of Kea DHCPv6 keys emitted by builders/dhcp6.py. Tight types on known keys; additionalProperties:true elsewhere for forward-compatibility. Pinned to Kea 3.0.2. Story 8.3 will replace with an upstream-derived schema.",
   "type": "object",
-  "additionalProperties": true
+  "required": ["Dhcp6"],
+  "additionalProperties": true,
+  "properties": {
+    "Dhcp6": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "valid-lifetime": { "type": "integer", "minimum": 0 },
+        "preferred-lifetime": { "type": "integer", "minimum": 0 },
+        "renew-timer": { "type": "integer", "minimum": 0 },
+        "rebind-timer": { "type": "integer", "minimum": 0 },
+        "option-data": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/optionDataEntry" }
+        },
+        "client-classes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/clientClassEntry" }
+        },
+        "subnet6": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/subnet6Entry" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "optionDataEntry": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "data": { "type": "string" },
+        "code": { "type": "integer", "minimum": 0 },
+        "space": { "type": "string" },
+        "csv-format": { "type": "boolean" },
+        "always-send": { "type": "boolean" },
+        "never-send": { "type": "boolean" }
+      }
+    },
+    "clientClassEntry": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "test": { "type": "string" },
+        "template-test": { "type": "string" },
+        "only-if-required": { "type": "boolean" },
+        "option-data": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/optionDataEntry" }
+        }
+      }
+    },
+    "subnet6Entry": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["subnet"],
+      "properties": {
+        "id": { "type": "integer", "minimum": 1 },
+        "subnet": { "type": "string", "minLength": 1 },
+        "valid-lifetime": { "type": "integer", "minimum": 0 },
+        "preferred-lifetime": { "type": "integer", "minimum": 0 },
+        "renew-timer": { "type": "integer", "minimum": 0 },
+        "rebind-timer": { "type": "integer", "minimum": 0 },
+        "interface": { "type": "string" },
+        "option-data": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/optionDataEntry" }
+        },
+        "pools": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/poolEntry" }
+        },
+        "pd-pools": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/pdPoolEntry" }
+        },
+        "reservations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/reservationEntry" }
+        }
+      }
+    },
+    "poolEntry": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["pool"],
+      "properties": {
+        "pool": { "type": "string", "minLength": 1 },
+        "client-classes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "option-data": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/optionDataEntry" }
+        }
+      }
+    },
+    "pdPoolEntry": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["prefix", "prefix-len", "delegated-len"],
+      "properties": {
+        "prefix": { "type": "string", "minLength": 1 },
+        "prefix-len": { "type": "integer", "minimum": 0, "maximum": 128 },
+        "delegated-len": { "type": "integer", "minimum": 0, "maximum": 128 },
+        "client-classes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "option-data": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/optionDataEntry" }
+        }
+      }
+    },
+    "reservationEntry": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["duid"],
+      "properties": {
+        "duid": { "type": "string", "minLength": 1 },
+        "ip-addresses": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "hostname": { "type": "string" },
+        "option-data": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/optionDataEntry" }
+        }
+      }
+    }
+  }
 }

@@ -19,7 +19,8 @@ YAML key conventions:
 from __future__ import annotations
 
 import re
-from typing import Annotated, Any
+from ipaddress import IPv6Network
+from typing import Annotated, Any, Literal
 
 from pydantic import (
     AfterValidator,
@@ -196,18 +197,44 @@ class PoolV4Model(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# DHCPv6 prefix delegation pool model
+# DHCPv6 pool models (discriminated union on `pool-type`)
 # ---------------------------------------------------------------------------
 
 
-class PdPoolModel(BaseModel):
-    """IPv6 Prefix Delegation pool (FR16)."""
+class PoolV6NaModel(BaseModel):
+    """IPv6 non-temporary address (NA) pool (FR15).
+
+    Discriminated-union member keyed on ``pool-type: na``. Mirrors PoolV4Model's
+    ``range`` semantics ("auto" or "<start> - <end>") for IPv6 addresses.
+    """
 
     model_config = ConfigDict(populate_by_name=True)
 
+    pool_type: Literal["na"] = Field(alias="pool-type")
+    range: AsciiStr  # "auto" or "<start> - <end>"
+    client_class: AsciiStr | None = Field(None, alias="client-class")
+
+
+class PoolV6PdModel(BaseModel):
+    """IPv6 Prefix Delegation (PD) pool (FR16).
+
+    Discriminated-union member keyed on ``pool-type: pd``. Carries the base
+    ``prefix``/``prefix-len`` and the ``delegated-len`` handed to clients.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    pool_type: Literal["pd"] = Field(alias="pool-type")
     prefix: AsciiStr
     prefix_len: int = Field(alias="prefix-len")
     delegated_len: int = Field(alias="delegated-len")
+    client_class: AsciiStr | None = Field(None, alias="client-class")
+
+
+PoolV6Model = Annotated[
+    PoolV6NaModel | PoolV6PdModel,
+    Field(discriminator="pool_type"),
+]
 
 
 # ---------------------------------------------------------------------------
@@ -271,14 +298,19 @@ class SubnetV4Model(BaseModel):
 
 
 class SubnetV6Model(BaseModel):
-    """DHCPv6 subnet with NA pools, PD pools, and reservations (FR14–FR18)."""
+    """DHCPv6 subnet with NA pools, PD pools, and reservations (FR14–FR18).
+
+    ``pools`` is a single list whose entries are a discriminated union of NA and
+    PD pools keyed on ``pool-type``; there is no separate ``pd-pools`` field.
+    ``subnet`` is stored as an ``ipaddress.IPv6Network`` so downstream builders
+    and semantic validation can call ``.network_address``/``.subnets()`` directly.
+    """
 
     model_config = ConfigDict(populate_by_name=True)
 
-    subnet: AsciiStr  # IPv6 CIDR: "2001:db8::/48"
+    subnet: IPv6Network  # IPv6 CIDR: "2001:db8::/48"
     id: int | None = Field(None, ge=1)
-    pools: list[PoolV4Model] = Field(default_factory=list)  # range is a string for both v4/v6
-    pd_pools: list[PdPoolModel] = Field(default_factory=list, alias="pd-pools")
+    pools: list[PoolV6Model] = Field(default_factory=list)
     reservations: list[HostReservationV6Model] = Field(default_factory=list)
     option_profile: AsciiStr | None = None
     valid_lifetime: int | None = Field(None, alias="valid-lifetime")
@@ -287,6 +319,35 @@ class SubnetV6Model(BaseModel):
     rebind_timer: int | None = Field(None, alias="rebind-timer")
     dns_servers: list[AsciiStr] = Field(default_factory=list, alias="dns-servers")
     option_data: list[dict[str, Any]] = Field(default_factory=list, alias="option-data")
+
+    @field_validator("subnet", mode="before")
+    @classmethod
+    def parse_ipv6_prefix(cls, v: Any) -> IPv6Network:
+        """Coerce a YAML string into an IPv6Network, rejecting non-IPv6 prefixes.
+
+        A bare address without an explicit ``/len`` is rejected (a /128 "subnet"
+        is almost certainly a typo at the YAML layer). Host bits are tolerated
+        (``strict=False``); Kea canonicalises later.
+        """
+        if isinstance(v, IPv6Network):
+            return v
+        if not isinstance(v, str):
+            # ValueError (not TypeError) so Pydantic wraps it into ValidationError
+            # and parse() can surface it through the collect-all ConfigError path.
+            raise ValueError(
+                f"must be a valid IPv6 prefix (e.g. '2001:db8::/48'), "
+                f"got non-string {type(v).__name__}"
+            )
+        if "/" not in v:
+            raise ValueError(
+                f"must be a valid IPv6 prefix (e.g. '2001:db8::/48'), got {v!r}"
+            )
+        try:
+            return IPv6Network(v, strict=False)
+        except ValueError as exc:  # AddressValueError/NetmaskValueError are subclasses
+            raise ValueError(
+                f"must be a valid IPv6 prefix (e.g. '2001:db8::/48'), got {v!r}"
+            ) from exc
 
     @field_validator(
         "valid_lifetime", "preferred_lifetime", "renew_timer", "rebind_timer", mode="before"
