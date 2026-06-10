@@ -1,0 +1,5 @@
+dhcp4:
+  subnets:
+    - subnet: 10.0.1.0/24
+      pools:
+        - range: "10.0.1.10 - 10.0.1.255"

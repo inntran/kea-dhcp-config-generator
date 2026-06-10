@@ -1,0 +1,18 @@
+dhcp4:
+  subnets:
+    - subnet: 10.0.10.0/24
+      pools:
+        - range: "10.0.10.10 - 10.0.10.50"
+          client-class: Android_12_14
+        - range: "10.0.10.60 - 10.0.10.100"
+          client-class: macOS
+        - range: "10.0.10.110 - 10.0.10.150"
+dhcp6:
+  subnets:
+    - subnet: 2001:db8:10::/64
+      pools:
+        - pool-type: na
+          range: auto
+          client-class: iOS_14_17
+        - pool-type: na
+          range: "2001:db8:10::200 - 2001:db8:10::2ff"

@@ -1,0 +1,3 @@
+dhcp6:
+  subnets:
+    - subnet: 2001:db8:1::/64

@@ -1,0 +1,70 @@
+dhcp4:
+  valid-lifetime: 86400
+  renew-timer: 21600
+  rebind-timer: 43200
+  dns-servers:
+    - "1.1.1.1"
+    - "8.8.8.8"
+  domain-name: "example.com"
+  ntp-servers:
+    - "10.0.0.1"
+  routers:
+    - "10.0.0.1"
+  subnets:
+    - subnet: 10.0.1.0/24
+      id: 10
+      valid-lifetime: 7200
+      dns-servers:
+        - "10.0.1.2"
+      domain-name: "subnet.example.com"
+      pools:
+        - range: "10.0.1.10 - 10.0.1.50"
+          client-class: Android_12_14
+        - range: "10.0.1.60 - 10.0.1.100"
+      reservations:
+        - hw-address: "aa:bb:cc:dd:ee:01"
+          ip-address: "10.0.1.200"
+          hostname: "host4"
+          option-data:
+            - name: bootfile-name
+              data: "pxelinux.0"
+    - subnet: 10.0.2.0/24
+      id: 20
+      pools:
+        - range: auto
+      reservations:
+        - hw-address: "aa:bb:cc:dd:ee:02"
+          ip-address: "10.0.2.210"
+dhcp6:
+  valid-lifetime: 86400
+  preferred-lifetime: 43200
+  renew-timer: 14400
+  rebind-timer: 28800
+  dns-servers:
+    - "2001:4860:4860::8888"
+  subnets:
+    - subnet: 2001:db8:1::/64
+      id: 10
+      valid-lifetime: 7200
+      preferred-lifetime: 3600
+      dns-servers:
+        - "2001:db8:1::53"
+      pools:
+        - pool-type: na
+          range: auto
+          client-class: macOS
+        - pool-type: pd
+          prefix: "2001:db8:100::"
+          prefix-len: 56
+          delegated-len: 64
+      reservations:
+        - duid: "00:01:00:01:52:13:52:13:08:00:27:58:f1:e8"
+          ip-address: "2001:db8:1::200"
+          hostname: "host6"
+    - subnet: 2001:db8:2::/64
+      id: 20
+      pools:
+        - pool-type: na
+          range: "2001:db8:2::100 - 2001:db8:2::1ff"
+      reservations:
+        - duid: "00:03:00:01:aa:bb:cc:dd:ee:ff"

@@ -1,0 +1,62 @@
+{
+  "Dhcp4": {
+    "client-classes": [
+      {
+        "name": "Android_12_14",
+        "test": "option[55].hex == 0x0103060f1a1c333a3b2b726c"
+      },
+      {
+        "name": "macOS",
+        "test": "option[55].hex == 0x017903060f77fc5f2c2e or option[55].hex == 0x017903060f7277fc5f2c2e or option[55].hex == 0x017903060f6c7277fc5f2c2e"
+      }
+    ],
+    "subnet4": [
+      {
+        "id": 1,
+        "subnet": "10.0.10.0/24",
+        "pools": [
+          {
+            "pool": "10.0.10.10 - 10.0.10.50",
+            "client-classes": [
+              "Android_12_14"
+            ]
+          },
+          {
+            "pool": "10.0.10.60 - 10.0.10.100",
+            "client-classes": [
+              "macOS"
+            ]
+          },
+          {
+            "pool": "10.0.10.110 - 10.0.10.150"
+          }
+        ]
+      }
+    ]
+  },
+  "Dhcp6": {
+    "client-classes": [
+      {
+        "name": "iOS_14_17",
+        "test": "option[55].hex == 0x017903060f6c7277fc or option[55].hex == 0x017903060f7277fc"
+      }
+    ],
+    "subnet6": [
+      {
+        "id": 1,
+        "subnet": "2001:db8:10::/64",
+        "pools": [
+          {
+            "pool": "2001:db8:10::1 - 2001:db8:10:0:ffff:ffff:ffff:fffe",
+            "client-classes": [
+              "iOS_14_17"
+            ]
+          },
+          {
+            "pool": "2001:db8:10::200 - 2001:db8:10::2ff"
+          }
+        ]
+      }
+    ]
+  }
+}

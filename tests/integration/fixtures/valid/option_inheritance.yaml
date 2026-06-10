@@ -1,0 +1,34 @@
+dhcp4:
+  dns-servers:
+    - "8.8.8.8"
+    - "1.1.1.1"
+  domain-name: "global.example"
+  ntp-servers:
+    - "10.0.0.1"
+  routers:
+    - "10.0.0.254"
+  subnets:
+    - subnet: 10.0.40.0/24
+      dns-servers:
+        - "10.0.40.53"
+      domain-name: "subnet.example"
+      option-data:
+        - name: domain-name
+          data: "explicit.example"
+        - name: routers
+          data: "10.0.40.1"
+      pools:
+        - range: "10.0.40.10 - 10.0.40.20"
+dhcp6:
+  dns-servers:
+    - "2001:4860:4860::8888"
+  subnets:
+    - subnet: 2001:db8:40::/64
+      dns-servers:
+        - "2001:db8:40::53"
+      option-data:
+        - name: dns-servers
+          data: "2001:db8:40::99"
+      pools:
+        - pool-type: na
+          range: auto

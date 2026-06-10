@@ -1,0 +1,11 @@
+dhcp4:
+  subnets:
+    - subnet: 10.0.20.0/24
+      pools:
+        - range: auto
+dhcp6:
+  subnets:
+    - subnet: 2001:db8:20::/64
+      pools:
+        - pool-type: na
+          range: auto

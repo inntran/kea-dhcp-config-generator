@@ -1,0 +1,157 @@
+{
+  "Dhcp4": {
+    "valid-lifetime": 86400,
+    "renew-timer": 21600,
+    "rebind-timer": 43200,
+    "option-data": [
+      {
+        "name": "domain-name-servers",
+        "data": "1.1.1.1, 8.8.8.8"
+      },
+      {
+        "name": "domain-name",
+        "data": "example.com"
+      },
+      {
+        "name": "ntp-servers",
+        "data": "10.0.0.1"
+      },
+      {
+        "name": "routers",
+        "data": "10.0.0.1"
+      }
+    ],
+    "client-classes": [
+      {
+        "name": "Android_12_14",
+        "test": "option[55].hex == 0x0103060f1a1c333a3b2b726c"
+      }
+    ],
+    "subnet4": [
+      {
+        "id": 10,
+        "subnet": "10.0.1.0/24",
+        "valid-lifetime": 7200,
+        "option-data": [
+          {
+            "name": "domain-name-servers",
+            "data": "10.0.1.2"
+          },
+          {
+            "name": "domain-name",
+            "data": "subnet.example.com"
+          }
+        ],
+        "pools": [
+          {
+            "pool": "10.0.1.10 - 10.0.1.50",
+            "client-classes": [
+              "Android_12_14"
+            ]
+          },
+          {
+            "pool": "10.0.1.60 - 10.0.1.100"
+          }
+        ],
+        "reservations": [
+          {
+            "hw-address": "aa:bb:cc:dd:ee:01",
+            "ip-address": "10.0.1.200",
+            "hostname": "host4",
+            "option-data": [
+              {
+                "name": "bootfile-name",
+                "data": "pxelinux.0"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": 20,
+        "subnet": "10.0.2.0/24",
+        "pools": [
+          {
+            "pool": "10.0.2.1 - 10.0.2.254"
+          }
+        ],
+        "reservations": [
+          {
+            "hw-address": "aa:bb:cc:dd:ee:02",
+            "ip-address": "10.0.2.210"
+          }
+        ]
+      }
+    ]
+  },
+  "Dhcp6": {
+    "valid-lifetime": 86400,
+    "preferred-lifetime": 43200,
+    "renew-timer": 14400,
+    "rebind-timer": 28800,
+    "option-data": [
+      {
+        "name": "dns-servers",
+        "data": "2001:4860:4860::8888"
+      }
+    ],
+    "client-classes": [
+      {
+        "name": "macOS",
+        "test": "option[55].hex == 0x017903060f77fc5f2c2e or option[55].hex == 0x017903060f7277fc5f2c2e or option[55].hex == 0x017903060f6c7277fc5f2c2e"
+      }
+    ],
+    "subnet6": [
+      {
+        "id": 10,
+        "subnet": "2001:db8:1::/64",
+        "valid-lifetime": 7200,
+        "preferred-lifetime": 3600,
+        "option-data": [
+          {
+            "name": "dns-servers",
+            "data": "2001:db8:1::53"
+          }
+        ],
+        "pools": [
+          {
+            "pool": "2001:db8:1::1 - 2001:db8:1:0:ffff:ffff:ffff:fffe",
+            "client-classes": [
+              "macOS"
+            ]
+          }
+        ],
+        "pd-pools": [
+          {
+            "prefix": "2001:db8:100::",
+            "prefix-len": 56,
+            "delegated-len": 64
+          }
+        ],
+        "reservations": [
+          {
+            "duid": "00:01:00:01:52:13:52:13:08:00:27:58:f1:e8",
+            "ip-addresses": [
+              "2001:db8:1::200"
+            ],
+            "hostname": "host6"
+          }
+        ]
+      },
+      {
+        "id": 20,
+        "subnet": "2001:db8:2::/64",
+        "pools": [
+          {
+            "pool": "2001:db8:2::100 - 2001:db8:2::1ff"
+          }
+        ],
+        "reservations": [
+          {
+            "duid": "00:03:00:01:aa:bb:cc:dd:ee:ff"
+          }
+        ]
+      }
+    ]
+  }
+}

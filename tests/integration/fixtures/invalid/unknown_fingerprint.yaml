@@ -1,0 +1,6 @@
+dhcp4:
+  subnets:
+    - subnet: 10.0.1.0/24
+      pools:
+        - range: auto
+          client-class: "zZqXX_no_match_here"

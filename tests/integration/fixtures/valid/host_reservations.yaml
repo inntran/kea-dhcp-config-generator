@@ -1,0 +1,14 @@
+dhcp4:
+  subnets:
+    - subnet: 10.0.30.0/24
+      reservations:
+        - hw-address: "aa:bb:cc:dd:ee:01"
+          ip-address: "10.0.30.50"
+          hostname: "host4"
+dhcp6:
+  subnets:
+    - subnet: 2001:db8:30::/64
+      reservations:
+        - duid: "00:03:00:01:aa:bb:cc:dd:ee:ff"
+          ip-address: "2001:db8:30::50"
+          hostname: "host6"

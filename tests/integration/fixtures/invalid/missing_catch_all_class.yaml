@@ -1,0 +1,8 @@
+dhcp4:
+  subnets:
+    - subnet: 10.0.1.0/24
+      pools:
+        - range: "10.0.1.10 - 10.0.1.50"
+          client-class: Android_12_14
+        - range: "10.0.1.60 - 10.0.1.100"
+          client-class: macOS

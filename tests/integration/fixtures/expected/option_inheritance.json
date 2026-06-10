@@ -1,0 +1,72 @@
+{
+  "Dhcp4": {
+    "option-data": [
+      {
+        "name": "domain-name-servers",
+        "data": "8.8.8.8, 1.1.1.1"
+      },
+      {
+        "name": "domain-name",
+        "data": "global.example"
+      },
+      {
+        "name": "ntp-servers",
+        "data": "10.0.0.1"
+      },
+      {
+        "name": "routers",
+        "data": "10.0.0.254"
+      }
+    ],
+    "subnet4": [
+      {
+        "id": 1,
+        "subnet": "10.0.40.0/24",
+        "option-data": [
+          {
+            "name": "domain-name-servers",
+            "data": "10.0.40.53"
+          },
+          {
+            "name": "domain-name",
+            "data": "explicit.example"
+          },
+          {
+            "name": "routers",
+            "data": "10.0.40.1"
+          }
+        ],
+        "pools": [
+          {
+            "pool": "10.0.40.10 - 10.0.40.20"
+          }
+        ]
+      }
+    ]
+  },
+  "Dhcp6": {
+    "option-data": [
+      {
+        "name": "dns-servers",
+        "data": "2001:4860:4860::8888"
+      }
+    ],
+    "subnet6": [
+      {
+        "id": 1,
+        "subnet": "2001:db8:40::/64",
+        "option-data": [
+          {
+            "name": "dns-servers",
+            "data": "2001:db8:40::99"
+          }
+        ],
+        "pools": [
+          {
+            "pool": "2001:db8:40::1 - 2001:db8:40:0:ffff:ffff:ffff:fffe"
+          }
+        ]
+      }
+    ]
+  }
+}

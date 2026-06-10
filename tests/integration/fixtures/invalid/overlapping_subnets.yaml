@@ -1,0 +1,4 @@
+dhcp4:
+  subnets:
+    - subnet: 10.0.4.0/23
+    - subnet: 10.0.4.0/24

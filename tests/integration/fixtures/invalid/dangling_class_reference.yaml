@@ -1,0 +1,7 @@
+dhcp6:
+  subnets:
+    - subnet: 2001:db8:1::/64
+      pools:
+        - pool-type: na
+          range: auto
+          client-class: "NoSuchClass"
