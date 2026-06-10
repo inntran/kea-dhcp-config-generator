@@ -24,9 +24,7 @@ from kea_dhcp_config_generator.models.input import (
 from kea_dhcp_config_generator.validation.errors import ValidationResult
 
 
-def generate_report(
-    config: GlobalConfig, validation_result: ValidationResult | None = None
-) -> str:
+def generate_report(config: GlobalConfig, validation_result: ValidationResult | None = None) -> str:
     """Generate a human-readable analysis report from a validated GlobalConfig.
 
     Args:
@@ -168,8 +166,8 @@ def _format_pow2(count: int) -> str:
     if count & (count - 1) == 0:
         return f"2^{count.bit_length() - 1}"
     # bit_length() is the exponent of the next power of two strictly above count.
-    high = count.bit_length()          # 2^high > count
-    gap = (1 << high) - count          # how far below that power we are (>= 1)
+    high = count.bit_length()  # 2^high > count
+    gap = (1 << high) - count  # how far below that power we are (>= 1)
     if gap <= 4:
         return f"~2^{high}"
     return f"2^{high} - {gap}"
@@ -262,17 +260,13 @@ def _reservations(config: GlobalConfig) -> list[str]:
     if config.dhcp4:
         for subnet in config.dhcp4.subnets:
             any_subnets = True
-            lines.append(
-                f"  {subnet.subnet}: {len(subnet.reservations)} MAC (DHCPv4)"
-            )
+            lines.append(f"  {subnet.subnet}: {len(subnet.reservations)} MAC (DHCPv4)")
 
     # DHCPv6 reservations — one line per subnet, including zero counts.
     if config.dhcp6:
         for subnet in config.dhcp6.subnets:
             any_subnets = True
-            lines.append(
-                f"  {str(subnet.subnet)}: {len(subnet.reservations)} DUID (DHCPv6)"
-            )
+            lines.append(f"  {str(subnet.subnet)}: {len(subnet.reservations)} DUID (DHCPv6)")
 
     if not any_subnets:
         lines.append("  (none)")

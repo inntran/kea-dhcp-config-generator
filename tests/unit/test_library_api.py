@@ -54,8 +54,7 @@ def test_import_surface_and___all___without_cli():
 def test_generate_success_dual_stack(tmp_path: Path):
     cfg = _write_config(
         tmp_path / "config.yaml",
-        "dhcp4:\n  subnets: []\n"
-        "dhcp6:\n  subnets: []\n",
+        "dhcp4:\n  subnets: []\ndhcp6:\n  subnets: []\n",
     )
 
     result = generate(cfg, output_dir=tmp_path)
@@ -81,9 +80,7 @@ def test_generate_success_dhcp4_only(tmp_path: Path):
 def test_generate_success_dhcp6_only(tmp_path: Path):
     cfg = _write_config(
         tmp_path / "config.yaml",
-        "fingerprint_library_version: \"0.0.0-test-mismatch\"\n"
-        "dhcp6:\n"
-        "  subnets: []\n",
+        'fingerprint_library_version: "0.0.0-test-mismatch"\ndhcp6:\n  subnets: []\n',
     )
 
     result = generate(cfg, output_dir=tmp_path)
@@ -97,10 +94,7 @@ def test_generate_success_dhcp6_only(tmp_path: Path):
 def test_generate_raises_typed_semantic_error(tmp_path: Path):
     cfg = _write_config(
         tmp_path / "config.yaml",
-        "dhcp4:\n"
-        "  subnets:\n"
-        "    - subnet: 10.0.4.0/23\n"
-        "    - subnet: 10.0.4.0/24\n",
+        "dhcp4:\n  subnets:\n    - subnet: 10.0.4.0/23\n    - subnet: 10.0.4.0/24\n",
     )
 
     with pytest.raises(ExceptionGroup) as excinfo:
@@ -139,10 +133,7 @@ def test_generate_schema_failure_blocks_write(tmp_path: Path, monkeypatch: pytes
 def test_validate_never_raises_for_validation_failures(tmp_path: Path):
     cfg = _write_config(
         tmp_path / "config.yaml",
-        "dhcp4:\n"
-        "  subnets:\n"
-        "    - subnet: 10.0.4.0/23\n"
-        "    - subnet: 10.0.4.0/24\n",
+        "dhcp4:\n  subnets:\n    - subnet: 10.0.4.0/23\n    - subnet: 10.0.4.0/24\n",
     )
 
     result = validate(cfg)

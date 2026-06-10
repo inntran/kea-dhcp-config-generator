@@ -80,9 +80,7 @@ def main(
 ) -> None:
     """Generate Kea DHCPv4/DHCPv6 JSON configuration from YAML."""
     try:
-        validated_config, errors, warnings, library = api._collect_validation_state(
-            config, strict
-        )
+        validated_config, errors, warnings, library = api._collect_validation_state(config, strict)
     except KeaConfigError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=2) from None
@@ -96,7 +94,7 @@ def main(
     if errors:
         for error in errors:
             typer.echo(_format_error(error), err=True)
-        
+
         # If analysis or analysis_only requested, still produce report (even with errors)
         # but only if validated_config is not None (config parsed structurally).
         if (analysis or analysis_only) and validated_config is not None:
@@ -107,7 +105,7 @@ def main(
             )
             report = analysis_report.generate_report(validated_config, validation_result)
             typer.echo(report)
-        
+
         raise typer.Exit(code=1) from None
 
     # If analysis_only or analysis requested, build and output the report.
@@ -118,12 +116,12 @@ def main(
             validated_config=validated_config,
         )
         report = analysis_report.generate_report(validated_config, validation_result)
-        
+
         # analysis_only: print to stdout, don't generate JSON
         if analysis_only:
             typer.echo(report)
             raise typer.Exit(code=0)
-        
+
         # analysis (generation + analysis): continue to generate JSON below
 
     # Ensure the output directory exists before writing (supports --output dirs
@@ -162,7 +160,7 @@ def main(
         typer.echo(str(result.dhcp4_path))
     if result.dhcp6_path is not None:
         typer.echo(str(result.dhcp6_path))
-    
+
     # If analysis flag (not just analysis_only), also generate and output analysis file path
     if analysis:
         validation_result = ValidationResult(
@@ -171,9 +169,7 @@ def main(
             validated_config=validated_config,
         )
         report = analysis_report.generate_report(validated_config, validation_result)
-        analysis_path = writer.write_analysis(
-            report, output, overwrite=overwrite
-        )
+        analysis_path = writer.write_analysis(report, output, overwrite=overwrite)
         typer.echo(str(analysis_path))
-    
+
     raise typer.Exit(code=0)

@@ -114,9 +114,11 @@ def test_file_order_android_before_windows(lib):
 
 # ---- Story 3.2 tests ----
 
+
 def test_global_config_has_fingerprint_library_version_field():
     """AC #1: GlobalConfig.fingerprint_library_version is an optional string field."""
     from kea_dhcp_config_generator.models.input import GlobalConfig
+
     fields = GlobalConfig.model_fields
     assert "fingerprint_library_version" in fields
     field = fields["fingerprint_library_version"]
@@ -126,6 +128,7 @@ def test_global_config_has_fingerprint_library_version_field():
 def test_version_pinning_match_no_warnings():
     """AC #2: matching version → no warnings on lib.warnings."""
     import importlib.metadata
+
     installed = importlib.metadata.version("kea-dhcp-config-generator")
     lib_pinned = DHCPFingerprint(pinned_version=installed)
     assert lib_pinned.warnings == []
@@ -143,6 +146,7 @@ def test_version_pinning_mismatch_emits_warning():
 def test_version_pinning_mismatch_message_contains_installed_version():
     """AC #3: warning message includes both pinned and installed version strings."""
     import importlib.metadata
+
     installed = importlib.metadata.version("kea-dhcp-config-generator")
     lib_bad = DHCPFingerprint(pinned_version="9.9.9")
     assert installed in lib_bad.warnings[0].message

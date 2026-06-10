@@ -56,9 +56,7 @@ def _run_semantic_validators(
     library = _build_fingerprint_library(config)
     if library is not None:
         warnings.extend(library.warnings)
-    class_errors, class_warnings = semantic_validation.validate_classification(
-        config, raw, library
-    )
+    class_errors, class_warnings = semantic_validation.validate_classification(config, raw, library)
     errors.extend(class_errors)
     warnings.extend(class_warnings)
     return errors, warnings, library
@@ -158,13 +156,9 @@ def _build_generated_outputs(
     """Build, schema-validate, and write every requested output file."""
     built_outputs: list[tuple[dict, str]] = []
     if config.dhcp4 is not None:
-        built_outputs.append(
-            (dhcp4_builder.build(config, fingerprint_library=library), "dhcp4")
-        )
+        built_outputs.append((dhcp4_builder.build(config, fingerprint_library=library), "dhcp4"))
     if config.dhcp6 is not None:
-        built_outputs.append(
-            (dhcp6_builder.build(config, fingerprint_library=library), "dhcp6")
-        )
+        built_outputs.append((dhcp6_builder.build(config, fingerprint_library=library), "dhcp6"))
 
     schema_errors: list[ConfigError] = []
     for built, protocol in built_outputs:
@@ -218,9 +212,7 @@ def validate(
             unexpected top-level type) and unexpected non-validation exceptions
             encountered while validating.
     """
-    validated_config, errors, warnings, _library = _collect_validation_state(
-        config_path, strict
-    )
+    validated_config, errors, warnings, _library = _collect_validation_state(config_path, strict)
     return ValidationResult(
         errors=errors,
         warnings=warnings,
@@ -242,9 +234,7 @@ def generate(
         ExceptionGroup[ConfigError]: For structural, semantic, or schema validation
             failures. Each leaf carries message, yaml_path, line, and suggestion.
     """
-    validated_config, errors, warnings, library = _collect_validation_state(
-        config_path, strict
-    )
+    validated_config, errors, warnings, library = _collect_validation_state(config_path, strict)
     if errors:
         raise ExceptionGroup("Validation failed", errors)
     assert validated_config is not None

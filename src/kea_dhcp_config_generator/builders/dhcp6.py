@@ -24,6 +24,8 @@ Subnet IDs auto-assign as a 1-based YAML-order sequence independent from the
 DHCPv4 sequence; the all-or-none explicit-ID rule applies per stack.
 """
 
+from difflib import get_close_matches
+
 from kea_dhcp_config_generator.builders.options import merge_option_data
 from kea_dhcp_config_generator.builders.pools import (
     calculate_pool_range,
@@ -34,10 +36,12 @@ from kea_dhcp_config_generator.models.input import (
     Dhcp6Config,
     GlobalConfig,
     HostReservationV6Model,
+    OptionProfileModel,
     PoolV6NaModel,
     PoolV6PdModel,
     SubnetV6Model,
 )
+from kea_dhcp_config_generator.validation.errors import KeaConfigError
 
 
 def build(config: GlobalConfig, fingerprint_library: DHCPFingerprint | None = None) -> dict:
@@ -83,7 +87,7 @@ def build(config: GlobalConfig, fingerprint_library: DHCPFingerprint | None = No
         client_classes = _collect_client_classes(dhcp6, fingerprint_library)
         if client_classes:
             dhcp6_dict["client-classes"] = client_classes
-        dhcp6_dict["subnet6"] = _build_subnet6(dhcp6)
+        dhcp6_dict["subnet6"] = _build_subnet6(dhcp6, config.option_profiles)
 
     return {"Dhcp6": dhcp6_dict}
 
@@ -116,7 +120,7 @@ def _collect_client_classes(
     entries: list[dict] = []
 
     for subnet in dhcp6.subnets:
-        for pool in (subnet.pools or []):
+        for pool in subnet.pools or []:
             name = pool.client_class
             if not name or name in seen:
                 continue
@@ -156,6 +160,24 @@ def _scope_option_data(model: Dhcp6Config | SubnetV6Model) -> list[dict]:
     """
     scalar = _scalar_to_option_data(model)
     return merge_option_data(scalar, model.option_data)
+
+
+def _resolve_option_profile(
+    name: str,
+    profiles: dict[str, OptionProfileModel],
+) -> OptionProfileModel:
+    profile = profiles.get(name)
+    if profile is not None:
+        return profile
+    suggestion = None
+    if profiles:
+        matches = get_close_matches(name, profiles.keys(), n=1)
+        if matches:
+            suggestion = f'did you mean "{matches[0]}"?'
+    message = f'unknown option_profile "{name}"'
+    if suggestion:
+        message = f"{message} ({suggestion})"
+    raise KeaConfigError(message)
 
 
 def _resolve_na_pool_range(pool: PoolV6NaModel, subnet_cidr: str) -> str:
@@ -216,7 +238,10 @@ def _build_reservation_entry(reservation: HostReservationV6Model) -> dict:
     return entry
 
 
-def _build_subnet6(dhcp6: Dhcp6Config) -> list[dict]:
+def _build_subnet6(
+    dhcp6: Dhcp6Config,
+    option_profiles: dict[str, OptionProfileModel],
+) -> list[dict]:
     """Build the subnet6 list.
 
     Subnet ID rules (all-or-none), independent from the DHCPv4 sequence:
@@ -243,6 +268,10 @@ def _build_subnet6(dhcp6: Dhcp6Config) -> list[dict]:
     next_id = 1
 
     for subnet in dhcp6.subnets:
+        profile: OptionProfileModel | None = None
+        if subnet.option_profile is not None:
+            profile = _resolve_option_profile(subnet.option_profile, option_profiles)
+
         if subnet.id is not None:
             assigned_id = subnet.id
         else:
@@ -256,16 +285,34 @@ def _build_subnet6(dhcp6: Dhcp6Config) -> list[dict]:
             "subnet": subnet_cidr,
         }
 
-        if subnet.valid_lifetime is not None:
-            subnet_dict["valid-lifetime"] = subnet.valid_lifetime
-        if subnet.preferred_lifetime is not None:
-            subnet_dict["preferred-lifetime"] = subnet.preferred_lifetime
-        if subnet.renew_timer is not None:
-            subnet_dict["renew-timer"] = subnet.renew_timer
-        if subnet.rebind_timer is not None:
-            subnet_dict["rebind-timer"] = subnet.rebind_timer
+        valid_lifetime = subnet.valid_lifetime
+        preferred_lifetime = subnet.preferred_lifetime
+        renew_timer = subnet.renew_timer
+        rebind_timer = subnet.rebind_timer
+        if profile is not None:
+            if valid_lifetime is None:
+                valid_lifetime = profile.valid_lifetime
+            if preferred_lifetime is None:
+                preferred_lifetime = profile.preferred_lifetime
+            if renew_timer is None:
+                renew_timer = profile.renew_timer
+            if rebind_timer is None:
+                rebind_timer = profile.rebind_timer
+        if valid_lifetime is not None:
+            subnet_dict["valid-lifetime"] = valid_lifetime
+        if preferred_lifetime is not None:
+            subnet_dict["preferred-lifetime"] = preferred_lifetime
+        if renew_timer is not None:
+            subnet_dict["renew-timer"] = renew_timer
+        if rebind_timer is not None:
+            subnet_dict["rebind-timer"] = rebind_timer
 
         subnet_option_data = _scope_option_data(subnet)
+        if profile is not None:
+            subnet_option_data = merge_option_data(
+                _scalar_to_option_data(profile),
+                subnet_option_data,
+            )
         if subnet_option_data:
             subnet_dict["option-data"] = subnet_option_data
 
@@ -284,9 +331,7 @@ def _build_subnet6(dhcp6: Dhcp6Config) -> list[dict]:
             subnet_dict["pd-pools"] = pd_entries
 
         if subnet.reservations:
-            subnet_dict["reservations"] = [
-                _build_reservation_entry(r) for r in subnet.reservations
-            ]
+            subnet_dict["reservations"] = [_build_reservation_entry(r) for r in subnet.reservations]
 
         subnets.append(subnet_dict)
 

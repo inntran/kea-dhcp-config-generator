@@ -29,11 +29,7 @@ VALID_FIXTURES = [
 
 def _payload_object(path: Path) -> dict:
     document = json.loads(path.read_text(encoding="utf-8"))
-    return {
-        key: value
-        for key, value in document.items()
-        if key != "_kea-config-generator"
-    }
+    return {key: value for key, value in document.items() if key != "_kea-config-generator"}
 
 
 @pytest.mark.parametrize("stem", VALID_FIXTURES)

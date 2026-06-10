@@ -33,11 +33,7 @@ def test_lc_metadata_accessible(tmp_path):
 def test_anchor_resolved(tmp_path):
     f = tmp_path / "config.yaml"
     f.write_text(
-        "defaults: &defs\n"
-        "  valid-lifetime: 3600\n"
-        "subnet:\n"
-        "  <<: *defs\n"
-        "  subnet: 10.0.0.0/8\n"
+        "defaults: &defs\n  valid-lifetime: 3600\nsubnet:\n  <<: *defs\n  subnet: 10.0.0.0/8\n"
     )
     data = loader.load(f)
     assert data["subnet"]["valid-lifetime"] == 3600

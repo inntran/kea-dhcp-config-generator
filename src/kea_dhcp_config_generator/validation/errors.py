@@ -31,8 +31,8 @@ class ConfigError(Exception):
     """
 
     message: str
-    yaml_path: str          # dot-notation path: "dhcp4.subnets[0].valid-lifetime"
-    line: int | None        # 1-indexed YAML source line; None if unavailable
+    yaml_path: str  # dot-notation path: "dhcp4.subnets[0].valid-lifetime"
+    line: int | None  # 1-indexed YAML source line; None if unavailable
     suggestion: str | None  # optional fix guidance; None if not applicable
 
     def __post_init__(self) -> None:
@@ -73,8 +73,8 @@ class ConfigWarning:
     """
 
     message: str
-    yaml_path: str          # dot-notation: "fingerprint_library_version"
-    line: int | None        # None when warning has no YAML source line
+    yaml_path: str  # dot-notation: "fingerprint_library_version"
+    line: int | None  # None when warning has no YAML source line
     suggestion: str | None  # optional fix guidance
 
 

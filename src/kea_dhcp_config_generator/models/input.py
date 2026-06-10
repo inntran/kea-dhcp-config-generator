@@ -165,6 +165,7 @@ class OptionProfileModel(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     valid_lifetime: int | None = Field(None, alias="valid-lifetime")
+    preferred_lifetime: int | None = Field(None, alias="preferred-lifetime")
     renew_timer: int | None = Field(None, alias="renew-timer")
     rebind_timer: int | None = Field(None, alias="rebind-timer")
     dns_servers: list[AsciiStr] = Field(default_factory=list, alias="dns-servers")
@@ -172,7 +173,13 @@ class OptionProfileModel(BaseModel):
     ntp_servers: list[AsciiStr] = Field(default_factory=list, alias="ntp-servers")
     routers: list[AsciiStr] = Field(default_factory=list)
 
-    @field_validator("valid_lifetime", "renew_timer", "rebind_timer", mode="before")
+    @field_validator(
+        "valid_lifetime",
+        "preferred_lifetime",
+        "renew_timer",
+        "rebind_timer",
+        mode="before",
+    )
     @classmethod
     def parse_duration_field(cls, v: Any) -> int | None:
         if v is None:
@@ -339,9 +346,7 @@ class SubnetV6Model(BaseModel):
                 f"got non-string {type(v).__name__}"
             )
         if "/" not in v:
-            raise ValueError(
-                f"must be a valid IPv6 prefix (e.g. '2001:db8::/48'), got {v!r}"
-            )
+            raise ValueError(f"must be a valid IPv6 prefix (e.g. '2001:db8::/48'), got {v!r}")
         try:
             return IPv6Network(v, strict=False)
         except ValueError as exc:  # AddressValueError/NetmaskValueError are subclasses
@@ -473,7 +478,7 @@ def parse(raw: CommentedMap) -> GlobalConfig:
             # Strip Pydantic's "Value error, " prefix only when it originates from
             # a user-defined validator (type == "value_error") for clean user output.
             if error.get("type") == "value_error" and msg.startswith("Value error, "):
-                msg = msg[len("Value error, "):]
+                msg = msg[len("Value error, ") :]
             errors.append(
                 ConfigError(
                     message=msg,

@@ -181,9 +181,7 @@ def test_write_analysis_output_ends_with_newline_if_provided(tmp_path):
 def test_write_analysis_output_is_valid_utf8(tmp_path):
     """write_analysis output is valid UTF-8."""
     report = (
-        "Configuration Analysis Report\n\n"
-        "Client Classification\n"
-        "rules in use: BYOD, Corporate\n"
+        "Configuration Analysis Report\n\nClient Classification\nrules in use: BYOD, Corporate\n"
     )
     path = writer.write_analysis(report, tmp_path, timestamp=_FIXED_TS)
     path.read_text(encoding="utf-8")  # raises UnicodeDecodeError if not valid

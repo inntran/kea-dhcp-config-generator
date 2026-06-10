@@ -33,17 +33,13 @@ def test_schema_files_are_package_data(name):
 
 def test_version_file_format():
     """AC #2: VERSION matches semver-like format."""
-    raw = (files("kea_dhcp_config_generator") / "_schema" / "VERSION").read_text(
-        encoding="utf-8"
-    )
+    raw = (files("kea_dhcp_config_generator") / "_schema" / "VERSION").read_text(encoding="utf-8")
     assert re.match(r"^\d+\.\d+\.\d+\n?$", raw), f"unexpected VERSION content: {raw!r}"
 
 
 def test_schema_version_constant_matches_file():
     """AC #2, AC #10: SCHEMA_VERSION constant equals trimmed VERSION file."""
-    raw = (files("kea_dhcp_config_generator") / "_schema" / "VERSION").read_text(
-        encoding="utf-8"
-    )
+    raw = (files("kea_dhcp_config_generator") / "_schema" / "VERSION").read_text(encoding="utf-8")
     assert raw.strip() == output_schema.SCHEMA_VERSION
     assert output_schema.SCHEMA_VERSION == "3.0.2"
 
@@ -80,18 +76,24 @@ def test_validate_dhcp6_accepts_valid_builder_output():
     """DHCPv6 schema (Story 5.2/5.3) accepts a real builder dict."""
     from kea_dhcp_config_generator.builders import dhcp6 as dhcp6_builder
 
-    cfg = input_models.GlobalConfig.model_validate({
-        "dhcp6": {
-            "subnets": [{
-                "subnet": "2001:db8:1::/64",
-                "pools": [{"pool-type": "na", "range": "auto"}],
-                "reservations": [{
-                    "duid": "00:03:00:01:aa:bb:cc:dd:ee:ff",
-                    "ip-address": "2001:db8:1::100",
-                }],
-            }],
+    cfg = input_models.GlobalConfig.model_validate(
+        {
+            "dhcp6": {
+                "subnets": [
+                    {
+                        "subnet": "2001:db8:1::/64",
+                        "pools": [{"pool-type": "na", "range": "auto"}],
+                        "reservations": [
+                            {
+                                "duid": "00:03:00:01:aa:bb:cc:dd:ee:ff",
+                                "ip-address": "2001:db8:1::100",
+                            }
+                        ],
+                    }
+                ],
+            }
         }
-    })
+    )
     built = dhcp6_builder.build(cfg, fingerprint_library=DHCPFingerprint())
     assert output_schema.validate_dhcp6(built) is None
 

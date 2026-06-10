@@ -17,6 +17,8 @@ Kea option-data format at their respective scope; explicit option_data fields ar
 using merge-by-name semantics (most-specific wins).
 """
 
+from difflib import get_close_matches
+
 from kea_dhcp_config_generator.builders.options import merge_option_data
 from kea_dhcp_config_generator.builders.pools import calculate_pool_range, parse_pool_range
 from kea_dhcp_config_generator.fingerprints import DHCPFingerprint
@@ -24,9 +26,11 @@ from kea_dhcp_config_generator.models.input import (
     Dhcp4Config,
     GlobalConfig,
     HostReservationV4Model,
+    OptionProfileModel,
     PoolV4Model,
     SubnetV4Model,
 )
+from kea_dhcp_config_generator.validation.errors import KeaConfigError
 
 
 def build(config: GlobalConfig, fingerprint_library: DHCPFingerprint | None = None) -> dict:
@@ -70,7 +74,7 @@ def build(config: GlobalConfig, fingerprint_library: DHCPFingerprint | None = No
         client_classes = _collect_client_classes(dhcp4, fingerprint_library)
         if client_classes:
             dhcp4_dict["client-classes"] = client_classes
-        dhcp4_dict["subnet4"] = _build_subnet4(dhcp4)
+        dhcp4_dict["subnet4"] = _build_subnet4(dhcp4, config.option_profiles)
 
     return {"Dhcp4": dhcp4_dict}
 
@@ -103,7 +107,18 @@ def _collect_client_classes(
     entries: list[dict] = []
 
     for subnet in dhcp4.subnets:
-        for pool in (subnet.pools or []):
+        name = subnet.client_class
+        if name and name not in seen:
+            seen.add(name)
+            rule = fingerprint_library.lookup(name)
+            if rule is not None:
+                entry: dict = {"name": name}
+                if "test" in rule:
+                    entry["test"] = rule["test"]
+                else:
+                    entry["template-test"] = rule["template-test"]
+                entries.append(entry)
+        for pool in subnet.pools or []:
             name = pool.client_class
             if not name or name in seen:
                 continue
@@ -154,6 +169,24 @@ def _scope_option_data(model: Dhcp4Config | SubnetV4Model) -> list[dict]:
     return merge_option_data(scalar, model.option_data)
 
 
+def _resolve_option_profile(
+    name: str,
+    profiles: dict[str, OptionProfileModel],
+) -> OptionProfileModel:
+    profile = profiles.get(name)
+    if profile is not None:
+        return profile
+    suggestion = None
+    if profiles:
+        matches = get_close_matches(name, profiles.keys(), n=1)
+        if matches:
+            suggestion = f'did you mean "{matches[0]}"?'
+    message = f'unknown option_profile "{name}"'
+    if suggestion:
+        message = f"{message} ({suggestion})"
+    raise KeaConfigError(message)
+
+
 def _resolve_pool_range(pool: PoolV4Model, subnet_cidr: str) -> str:
     """Return the pool range as 'start - end'.
 
@@ -198,7 +231,10 @@ def _build_reservation_entry(reservation: HostReservationV4Model) -> dict:
     return entry
 
 
-def _build_subnet4(dhcp4: Dhcp4Config) -> list[dict]:
+def _build_subnet4(
+    dhcp4: Dhcp4Config,
+    option_profiles: dict[str, OptionProfileModel],
+) -> list[dict]:
     """Build the subnet4 list.
 
     Subnet ID rules (all-or-none):
@@ -228,6 +264,10 @@ def _build_subnet4(dhcp4: Dhcp4Config) -> list[dict]:
     next_id = 1
 
     for subnet in dhcp4.subnets:
+        profile: OptionProfileModel | None = None
+        if subnet.option_profile is not None:
+            profile = _resolve_option_profile(subnet.option_profile, option_profiles)
+
         if subnet.id is not None:
             assigned_id = subnet.id
         else:
@@ -240,33 +280,44 @@ def _build_subnet4(dhcp4: Dhcp4Config) -> list[dict]:
         }
 
         # Per-subnet timers (omit if not set)
-        if subnet.valid_lifetime is not None:
-            subnet_dict["valid-lifetime"] = subnet.valid_lifetime
-        if subnet.renew_timer is not None:
-            subnet_dict["renew-timer"] = subnet.renew_timer
-        if subnet.rebind_timer is not None:
-            subnet_dict["rebind-timer"] = subnet.rebind_timer
+        valid_lifetime = subnet.valid_lifetime
+        renew_timer = subnet.renew_timer
+        rebind_timer = subnet.rebind_timer
+        if profile is not None:
+            if valid_lifetime is None:
+                valid_lifetime = profile.valid_lifetime
+            if renew_timer is None:
+                renew_timer = profile.renew_timer
+            if rebind_timer is None:
+                rebind_timer = profile.rebind_timer
+        if valid_lifetime is not None:
+            subnet_dict["valid-lifetime"] = valid_lifetime
+        if renew_timer is not None:
+            subnet_dict["renew-timer"] = renew_timer
+        if rebind_timer is not None:
+            subnet_dict["rebind-timer"] = rebind_timer
 
         # Subnet-level client-class selector (string form; Kea 3.x subnet selector)
         if subnet.client_class:
             subnet_dict["client-class"] = subnet.client_class
 
-        # Subnet-specific option-data (scalar + explicit at this scope only)
+        # Subnet-specific option-data; option profiles contribute the base.
         subnet_option_data = _scope_option_data(subnet)
+        if profile is not None:
+            subnet_option_data = merge_option_data(
+                _scalar_to_option_data(profile),
+                subnet_option_data,
+            )
         if subnet_option_data:
             subnet_dict["option-data"] = subnet_option_data
 
         # Pools
         if subnet.pools:
-            subnet_dict["pools"] = [
-                _build_pool_entry(pool, subnet.subnet) for pool in subnet.pools
-            ]
+            subnet_dict["pools"] = [_build_pool_entry(pool, subnet.subnet) for pool in subnet.pools]
 
         # Reservations (after pools, Kea-natural order)
         if subnet.reservations:
-            subnet_dict["reservations"] = [
-                _build_reservation_entry(r) for r in subnet.reservations
-            ]
+            subnet_dict["reservations"] = [_build_reservation_entry(r) for r in subnet.reservations]
 
         subnets.append(subnet_dict)
 

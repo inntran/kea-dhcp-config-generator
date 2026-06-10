@@ -26,6 +26,7 @@ dhcp6:
         - pool-type: na
           range: auto
         # PD (prefix delegation) pool — hands out /64s carved from 2001:db8:1::/48.
+        # Kea does not require the PD prefix to sit inside the subnet prefix.
         - pool-type: pd
           prefix: "2001:db8:1::"
           prefix-len: 48

@@ -15,6 +15,7 @@ import pytest
 from kea_dhcp_config_generator.builders.dhcp4 import build
 from kea_dhcp_config_generator.fingerprints import DHCPFingerprint
 from kea_dhcp_config_generator.models.input import GlobalConfig
+from kea_dhcp_config_generator.validation.errors import KeaConfigError
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -23,7 +24,12 @@ from kea_dhcp_config_generator.models.input import GlobalConfig
 
 def _cfg(dhcp4_dict: dict) -> GlobalConfig:
     """Build a GlobalConfig from a raw dhcp4 dict."""
-    return GlobalConfig.model_validate({"dhcp4": dhcp4_dict})
+    if any(key in dhcp4_dict for key in ("dhcp4", "dhcp6", "fingerprint_library_version")):
+        return GlobalConfig.model_validate(dhcp4_dict)
+    root = {"dhcp4": {k: v for k, v in dhcp4_dict.items() if k != "option_profiles"}}
+    if "option_profiles" in dhcp4_dict:
+        root["option_profiles"] = dhcp4_dict["option_profiles"]
+    return GlobalConfig.model_validate(root)
 
 
 def _minimal_subnet(cidr: str = "10.0.1.0/24", **extra) -> dict:
@@ -38,12 +44,14 @@ def _minimal_subnet(cidr: str = "10.0.1.0/24", **extra) -> dict:
 
 def test_global_timers_appear_with_hyphenated_keys():
     """AC #1: valid-lifetime, renew-timer, rebind-timer use Kea hyphenated keys."""
-    config = _cfg({
-        "valid-lifetime": 3600,
-        "renew-timer": 900,
-        "rebind-timer": 1800,
-        "subnets": [_minimal_subnet()],
-    })
+    config = _cfg(
+        {
+            "valid-lifetime": 3600,
+            "renew-timer": 900,
+            "rebind-timer": 1800,
+            "subnets": [_minimal_subnet()],
+        }
+    )
     result = build(config)
     dhcp4 = result["Dhcp4"]
 
@@ -54,10 +62,12 @@ def test_global_timers_appear_with_hyphenated_keys():
 
 def test_global_dns_servers_appear_in_option_data():
     """AC #1: dns-servers is converted to a domain-name-servers option-data entry."""
-    config = _cfg({
-        "dns-servers": ["8.8.8.8", "8.8.4.4"],
-        "subnets": [_minimal_subnet()],
-    })
+    config = _cfg(
+        {
+            "dns-servers": ["8.8.8.8", "8.8.4.4"],
+            "subnets": [_minimal_subnet()],
+        }
+    )
     result = build(config)
     option_data = result["Dhcp4"]["option-data"]
 
@@ -66,10 +76,12 @@ def test_global_dns_servers_appear_in_option_data():
 
 def test_global_domain_name_appears_in_option_data():
     """AC #1: domain-name is converted to a domain-name option-data entry."""
-    config = _cfg({
-        "domain-name": "example.com",
-        "subnets": [_minimal_subnet()],
-    })
+    config = _cfg(
+        {
+            "domain-name": "example.com",
+            "subnets": [_minimal_subnet()],
+        }
+    )
     result = build(config)
     option_data = result["Dhcp4"]["option-data"]
 
@@ -78,10 +90,12 @@ def test_global_domain_name_appears_in_option_data():
 
 def test_global_ntp_servers_appear_in_option_data():
     """AC #1: ntp-servers is converted to a ntp-servers option-data entry."""
-    config = _cfg({
-        "ntp-servers": ["10.0.0.1"],
-        "subnets": [_minimal_subnet()],
-    })
+    config = _cfg(
+        {
+            "ntp-servers": ["10.0.0.1"],
+            "subnets": [_minimal_subnet()],
+        }
+    )
     result = build(config)
     option_data = result["Dhcp4"]["option-data"]
 
@@ -90,10 +104,12 @@ def test_global_ntp_servers_appear_in_option_data():
 
 def test_global_routers_appear_in_option_data():
     """AC #1: routers is converted to a routers option-data entry."""
-    config = _cfg({
-        "routers": ["10.0.1.1"],
-        "subnets": [_minimal_subnet()],
-    })
+    config = _cfg(
+        {
+            "routers": ["10.0.1.1"],
+            "subnets": [_minimal_subnet()],
+        }
+    )
     result = build(config)
     option_data = result["Dhcp4"]["option-data"]
 
@@ -102,14 +118,16 @@ def test_global_routers_appear_in_option_data():
 
 def test_global_all_params_combined():
     """AC #1: all global parameters together produce correct hyphenated keys + option-data."""
-    config = _cfg({
-        "valid-lifetime": 86400,
-        "renew-timer": 21600,
-        "rebind-timer": 43200,
-        "dns-servers": ["1.1.1.1"],
-        "domain-name": "corp.internal",
-        "subnets": [_minimal_subnet()],
-    })
+    config = _cfg(
+        {
+            "valid-lifetime": 86400,
+            "renew-timer": 21600,
+            "rebind-timer": 43200,
+            "dns-servers": ["1.1.1.1"],
+            "domain-name": "corp.internal",
+            "subnets": [_minimal_subnet()],
+        }
+    )
     result = build(config)
     dhcp4 = result["Dhcp4"]
 
@@ -123,10 +141,12 @@ def test_global_all_params_combined():
 
 def test_global_none_timers_omitted():
     """AC #1: timers that are not set are omitted from the Dhcp4 dict."""
-    config = _cfg({
-        "valid-lifetime": 3600,
-        "subnets": [_minimal_subnet()],
-    })
+    config = _cfg(
+        {
+            "valid-lifetime": 3600,
+            "subnets": [_minimal_subnet()],
+        }
+    )
     result = build(config)
     dhcp4 = result["Dhcp4"]
 
@@ -151,15 +171,17 @@ def test_no_option_data_key_when_empty():
 
 def test_subnet4_array_has_correct_fields():
     """AC #2: subnet4 entry contains subnet, id, pools, and option-data."""
-    config = _cfg({
-        "subnets": [
-            {
-                "subnet": "10.0.1.0/24",
-                "dns-servers": ["8.8.8.8"],
-                "pools": [{"range": "10.0.1.10 - 10.0.1.100"}],
-            }
-        ]
-    })
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "10.0.1.0/24",
+                    "dns-servers": ["8.8.8.8"],
+                    "pools": [{"range": "10.0.1.10 - 10.0.1.100"}],
+                }
+            ]
+        }
+    )
     result = build(config)
     subnet4 = result["Dhcp4"]["subnet4"]
 
@@ -173,14 +195,16 @@ def test_subnet4_array_has_correct_fields():
 
 def test_subnet4_pool_range_preserved():
     """AC #2: explicit pool range appears verbatim in the pools entry."""
-    config = _cfg({
-        "subnets": [
-            {
-                "subnet": "192.168.1.0/24",
-                "pools": [{"range": "192.168.1.10 - 192.168.1.200"}],
-            }
-        ]
-    })
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "192.168.1.0/24",
+                    "pools": [{"range": "192.168.1.10 - 192.168.1.200"}],
+                }
+            ]
+        }
+    )
     result = build(config)
     pool_entry = result["Dhcp4"]["subnet4"][0]["pools"][0]
 
@@ -189,10 +213,12 @@ def test_subnet4_pool_range_preserved():
 
 def test_no_subnet4_key_when_no_subnets():
     """AC #2: subnet4 key is omitted when dhcp4 has no subnets."""
-    config = _cfg({
-        "valid-lifetime": 3600,
-        "subnets": [],
-    })
+    config = _cfg(
+        {
+            "valid-lifetime": 3600,
+            "subnets": [],
+        }
+    )
     result = build(config)
 
     assert "subnet4" not in result["Dhcp4"]
@@ -200,13 +226,15 @@ def test_no_subnet4_key_when_no_subnets():
 
 def test_multiple_subnets_all_appear():
     """AC #2: all subnets appear in subnet4 in YAML order."""
-    config = _cfg({
-        "subnets": [
-            _minimal_subnet("10.0.1.0/24"),
-            _minimal_subnet("10.0.2.0/24"),
-            _minimal_subnet("10.0.3.0/24"),
-        ]
-    })
+    config = _cfg(
+        {
+            "subnets": [
+                _minimal_subnet("10.0.1.0/24"),
+                _minimal_subnet("10.0.2.0/24"),
+                _minimal_subnet("10.0.3.0/24"),
+            ]
+        }
+    )
     result = build(config)
     subnets = result["Dhcp4"]["subnet4"]
 
@@ -223,13 +251,15 @@ def test_multiple_subnets_all_appear():
 
 def test_auto_id_assignment_sequential_from_one():
     """AC #3: subnets without explicit id receive sequential IDs starting from 1."""
-    config = _cfg({
-        "subnets": [
-            _minimal_subnet("10.0.1.0/24"),
-            _minimal_subnet("10.0.2.0/24"),
-            _minimal_subnet("10.0.3.0/24"),
-        ]
-    })
+    config = _cfg(
+        {
+            "subnets": [
+                _minimal_subnet("10.0.1.0/24"),
+                _minimal_subnet("10.0.2.0/24"),
+                _minimal_subnet("10.0.3.0/24"),
+            ]
+        }
+    )
     result = build(config)
     subnets = result["Dhcp4"]["subnet4"]
 
@@ -240,26 +270,30 @@ def test_auto_id_assignment_sequential_from_one():
 
 def test_mixed_subnet_ids_raises():
     """AC #3: mixing explicit and auto IDs raises ValueError (all-or-none rule)."""
-    config = _cfg({
-        "subnets": [
-            _minimal_subnet("10.0.1.0/24"),            # no id
-            {**_minimal_subnet("10.0.2.0/24"), "id": 99},  # explicit
-            _minimal_subnet("10.0.3.0/24"),            # no id
-        ]
-    })
+    config = _cfg(
+        {
+            "subnets": [
+                _minimal_subnet("10.0.1.0/24"),  # no id
+                {**_minimal_subnet("10.0.2.0/24"), "id": 99},  # explicit
+                _minimal_subnet("10.0.3.0/24"),  # no id
+            ]
+        }
+    )
     with pytest.raises(ValueError, match="Mixed subnet ID assignment"):
         build(config)
 
 
 def test_all_explicit_ids_accepted():
     """AC #3/#4: when all subnets have explicit IDs, each is used as-is."""
-    config = _cfg({
-        "subnets": [
-            {**_minimal_subnet("10.0.1.0/24"), "id": 10},
-            {**_minimal_subnet("10.0.2.0/24"), "id": 20},
-            {**_minimal_subnet("10.0.3.0/24"), "id": 30},
-        ]
-    })
+    config = _cfg(
+        {
+            "subnets": [
+                {**_minimal_subnet("10.0.1.0/24"), "id": 10},
+                {**_minimal_subnet("10.0.2.0/24"), "id": 20},
+                {**_minimal_subnet("10.0.3.0/24"), "id": 30},
+            ]
+        }
+    )
     result = build(config)
     subnets = result["Dhcp4"]["subnet4"]
 
@@ -275,22 +309,26 @@ def test_all_explicit_ids_accepted():
 
 def test_explicit_subnet_id_preserved():
     """AC #4: a subnet with id: 42 uses id 42 in the output."""
-    config = _cfg({
-        "subnets": [
-            {**_minimal_subnet("10.0.5.0/24"), "id": 42},
-        ]
-    })
+    config = _cfg(
+        {
+            "subnets": [
+                {**_minimal_subnet("10.0.5.0/24"), "id": 42},
+            ]
+        }
+    )
     result = build(config)
     assert result["Dhcp4"]["subnet4"][0]["id"] == 42
 
 
 def test_explicit_id_one():
     """AC #4: explicit id=1 is preserved even though it matches the auto-seq default."""
-    config = _cfg({
-        "subnets": [
-            {**_minimal_subnet("10.0.1.0/24"), "id": 1},
-        ]
-    })
+    config = _cfg(
+        {
+            "subnets": [
+                {**_minimal_subnet("10.0.1.0/24"), "id": 1},
+            ]
+        }
+    )
     result = build(config)
     assert result["Dhcp4"]["subnet4"][0]["id"] == 1
 
@@ -302,14 +340,16 @@ def test_explicit_id_one():
 
 def test_auto_pool_range_slash24_no_skip():
     """AC #5: 'auto' range on /24 resolves to .1 - .254."""
-    config = _cfg({
-        "subnets": [
-            {
-                "subnet": "10.0.1.0/24",
-                "pools": [{"range": "auto"}],
-            }
-        ]
-    })
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "10.0.1.0/24",
+                    "pools": [{"range": "auto"}],
+                }
+            ]
+        }
+    )
     result = build(config)
     pool = result["Dhcp4"]["subnet4"][0]["pools"][0]
 
@@ -318,14 +358,16 @@ def test_auto_pool_range_slash24_no_skip():
 
 def test_auto_pool_range_with_skip():
     """AC #5: 'auto' with skip-start/skip-end adjusts the pool boundaries."""
-    config = _cfg({
-        "subnets": [
-            {
-                "subnet": "10.0.1.0/24",
-                "pools": [{"range": "auto", "skip-start": 5, "skip-end": 2}],
-            }
-        ]
-    })
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "10.0.1.0/24",
+                    "pools": [{"range": "auto", "skip-start": 5, "skip-end": 2}],
+                }
+            ]
+        }
+    )
     result = build(config)
     pool = result["Dhcp4"]["subnet4"][0]["pools"][0]
 
@@ -334,14 +376,16 @@ def test_auto_pool_range_with_skip():
 
 def test_explicit_pool_range_passed_through():
     """AC #5: explicit range string is parsed and emitted verbatim as 'start - end'."""
-    config = _cfg({
-        "subnets": [
-            {
-                "subnet": "10.0.1.0/24",
-                "pools": [{"range": "10.0.1.10 - 10.0.1.100"}],
-            }
-        ]
-    })
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "10.0.1.0/24",
+                    "pools": [{"range": "10.0.1.10 - 10.0.1.100"}],
+                }
+            ]
+        }
+    )
     result = build(config)
     pool = result["Dhcp4"]["subnet4"][0]["pools"][0]
 
@@ -350,17 +394,19 @@ def test_explicit_pool_range_passed_through():
 
 def test_multiple_pools_all_resolved():
     """AC #5: multiple pools in a subnet are each resolved independently."""
-    config = _cfg({
-        "subnets": [
-            {
-                "subnet": "10.0.1.0/24",
-                "pools": [
-                    {"range": "10.0.1.10 - 10.0.1.50"},
-                    {"range": "auto"},
-                ],
-            }
-        ]
-    })
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "10.0.1.0/24",
+                    "pools": [
+                        {"range": "10.0.1.10 - 10.0.1.50"},
+                        {"range": "auto"},
+                    ],
+                }
+            ]
+        }
+    )
     result = build(config)
     pools = result["Dhcp4"]["subnet4"][0]["pools"]
 
@@ -376,14 +422,16 @@ def test_multiple_pools_all_resolved():
 
 def test_pool_client_class_emitted_as_list():
     """AC #6: client-class on a pool becomes "client-classes": ["value"] (list)."""
-    config = _cfg({
-        "subnets": [
-            {
-                "subnet": "10.0.1.0/24",
-                "pools": [{"range": "auto", "client-class": "Windows_11"}],
-            }
-        ]
-    })
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "10.0.1.0/24",
+                    "pools": [{"range": "auto", "client-class": "Windows_11"}],
+                }
+            ]
+        }
+    )
     result = build(config)
     pool = result["Dhcp4"]["subnet4"][0]["pools"][0]
 
@@ -392,14 +440,16 @@ def test_pool_client_class_emitted_as_list():
 
 def test_pool_client_class_singular_key_never_emitted():
     """AC #6: deprecated singular 'client-class' key is never emitted on pools."""
-    config = _cfg({
-        "subnets": [
-            {
-                "subnet": "10.0.1.0/24",
-                "pools": [{"range": "auto", "client-class": "iOS_17"}],
-            }
-        ]
-    })
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "10.0.1.0/24",
+                    "pools": [{"range": "auto", "client-class": "iOS_17"}],
+                }
+            ]
+        }
+    )
     result = build(config)
     pool = result["Dhcp4"]["subnet4"][0]["pools"][0]
 
@@ -409,14 +459,16 @@ def test_pool_client_class_singular_key_never_emitted():
 
 def test_pool_without_client_class_has_no_client_classes_key():
     """AC #6: pool with no client-class has neither 'client-class' nor 'client-classes'."""
-    config = _cfg({
-        "subnets": [
-            {
-                "subnet": "10.0.1.0/24",
-                "pools": [{"range": "auto"}],
-            }
-        ]
-    })
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "10.0.1.0/24",
+                    "pools": [{"range": "auto"}],
+                }
+            ]
+        }
+    )
     result = build(config)
     pool = result["Dhcp4"]["subnet4"][0]["pools"][0]
 
@@ -426,17 +478,19 @@ def test_pool_without_client_class_has_no_client_classes_key():
 
 def test_multiple_pools_mixed_client_class():
     """AC #6: client-classes appears only on pools that have client-class set."""
-    config = _cfg({
-        "subnets": [
-            {
-                "subnet": "10.0.1.0/24",
-                "pools": [
-                    {"range": "10.0.1.10 - 10.0.1.100", "client-class": "Windows_11"},
-                    {"range": "10.0.1.101 - 10.0.1.200"},
-                ],
-            }
-        ]
-    })
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "10.0.1.0/24",
+                    "pools": [
+                        {"range": "10.0.1.10 - 10.0.1.100", "client-class": "Windows_11"},
+                        {"range": "10.0.1.101 - 10.0.1.200"},
+                    ],
+                }
+            ]
+        }
+    )
     result = build(config)
     pools = result["Dhcp4"]["subnet4"][0]["pools"]
 
@@ -451,13 +505,15 @@ def test_multiple_pools_mixed_client_class():
 
 def test_dhcp4_top_level_key_order():
     """AC #7: Dhcp4 keys follow Kea-natural order: timers then option-data then subnet4."""
-    config = _cfg({
-        "valid-lifetime": 3600,
-        "renew-timer": 900,
-        "rebind-timer": 1800,
-        "dns-servers": ["8.8.8.8"],
-        "subnets": [_minimal_subnet()],
-    })
+    config = _cfg(
+        {
+            "valid-lifetime": 3600,
+            "renew-timer": 900,
+            "rebind-timer": 1800,
+            "dns-servers": ["8.8.8.8"],
+            "subnets": [_minimal_subnet()],
+        }
+    )
     result = build(config)
     keys = list(result["Dhcp4"].keys())
 
@@ -467,37 +523,47 @@ def test_dhcp4_top_level_key_order():
 
 def test_subnet_key_order():
     """AC #7: subnet keys follow Kea-natural order: id, subnet, timers, option-data, pools."""
-    config = _cfg({
-        "subnets": [
-            {
-                "subnet": "10.0.1.0/24",
-                "valid-lifetime": 7200,
-                "renew-timer": 1800,
-                "rebind-timer": 3600,
-                "dns-servers": ["1.1.1.1"],
-                "pools": [{"range": "auto"}],
-            }
-        ]
-    })
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "10.0.1.0/24",
+                    "valid-lifetime": 7200,
+                    "renew-timer": 1800,
+                    "rebind-timer": 3600,
+                    "dns-servers": ["1.1.1.1"],
+                    "pools": [{"range": "auto"}],
+                }
+            ]
+        }
+    )
     result = build(config)
     subnet_keys = list(result["Dhcp4"]["subnet4"][0].keys())
 
     expected_order = [
-        "id", "subnet", "valid-lifetime", "renew-timer", "rebind-timer", "option-data", "pools"
+        "id",
+        "subnet",
+        "valid-lifetime",
+        "renew-timer",
+        "rebind-timer",
+        "option-data",
+        "pools",
     ]
     assert subnet_keys == expected_order
 
 
 def test_pool_key_order_with_client_class():
     """AC #7: pool entry key order is pool → client-classes."""
-    config = _cfg({
-        "subnets": [
-            {
-                "subnet": "10.0.1.0/24",
-                "pools": [{"range": "auto", "client-class": "Windows_11"}],
-            }
-        ]
-    })
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "10.0.1.0/24",
+                    "pools": [{"range": "auto", "client-class": "Windows_11"}],
+                }
+            ]
+        }
+    )
     result = build(config)
     pool_keys = list(result["Dhcp4"]["subnet4"][0]["pools"][0].keys())
 
@@ -506,16 +572,18 @@ def test_pool_key_order_with_client_class():
 
 def test_subnet_key_order_with_client_class():
     """AC #7: when client-class is set, it appears after rebind-timer and before option-data."""
-    config = _cfg({
-        "subnets": [
-            {
-                "subnet": "10.0.1.0/24",
-                "valid-lifetime": 7200,
-                "client-class": "VoIP",
-                "dns-servers": ["1.1.1.1"],
-            }
-        ]
-    })
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "10.0.1.0/24",
+                    "valid-lifetime": 7200,
+                    "client-class": "VoIP",
+                    "dns-servers": ["1.1.1.1"],
+                }
+            ]
+        }
+    )
     result = build(config)
     subnet_keys = list(result["Dhcp4"]["subnet4"][0].keys())
 
@@ -528,14 +596,16 @@ def test_subnet_key_order_with_client_class():
 
 def test_pool_key_order_without_client_class():
     """AC #7: pool entry without client-class has only the 'pool' key."""
-    config = _cfg({
-        "subnets": [
-            {
-                "subnet": "10.0.1.0/24",
-                "pools": [{"range": "auto"}],
-            }
-        ]
-    })
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "10.0.1.0/24",
+                    "pools": [{"range": "auto"}],
+                }
+            ]
+        }
+    )
     result = build(config)
     pool_keys = list(result["Dhcp4"]["subnet4"][0]["pools"][0].keys())
 
@@ -564,15 +634,17 @@ def test_result_top_level_key_is_Dhcp4():
 
 def test_subnet_option_data_from_scalar_fields():
     """Subnet-level scalar option fields are converted to option-data at subnet scope."""
-    config = _cfg({
-        "subnets": [
-            {
-                "subnet": "10.0.1.0/24",
-                "dns-servers": ["1.1.1.1"],
-                "routers": ["10.0.1.1"],
-            }
-        ]
-    })
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "10.0.1.0/24",
+                    "dns-servers": ["1.1.1.1"],
+                    "routers": ["10.0.1.1"],
+                }
+            ]
+        }
+    )
     result = build(config)
     option_data = result["Dhcp4"]["subnet4"][0]["option-data"]
 
@@ -583,10 +655,12 @@ def test_subnet_option_data_from_scalar_fields():
 
 def test_global_explicit_option_data_included():
     """Explicit option-data entries at global scope appear in Dhcp4 option-data."""
-    config = _cfg({
-        "option-data": [{"name": "boot-file-name", "data": "pxelinux.0"}],
-        "subnets": [_minimal_subnet()],
-    })
+    config = _cfg(
+        {
+            "option-data": [{"name": "boot-file-name", "data": "pxelinux.0"}],
+            "subnets": [_minimal_subnet()],
+        }
+    )
     result = build(config)
     option_data = result["Dhcp4"]["option-data"]
 
@@ -595,11 +669,13 @@ def test_global_explicit_option_data_included():
 
 def test_explicit_option_data_overrides_scalar_same_name():
     """Explicit option-data entry with same name overrides scalar-derived entry."""
-    config = _cfg({
-        "dns-servers": ["8.8.8.8"],
-        "option-data": [{"name": "domain-name-servers", "data": "1.1.1.1"}],
-        "subnets": [_minimal_subnet()],
-    })
+    config = _cfg(
+        {
+            "dns-servers": ["8.8.8.8"],
+            "option-data": [{"name": "domain-name-servers", "data": "1.1.1.1"}],
+            "subnets": [_minimal_subnet()],
+        }
+    )
     result = build(config)
     option_data = result["Dhcp4"]["option-data"]
 
@@ -634,14 +710,18 @@ def test_subnet_with_no_options_has_no_option_data_key():
 
 def test_reservations_array_present_when_defined():
     """AC #1: subnet entry contains 'reservations' array when reservations defined."""
-    config = _cfg({
-        "subnets": [{
-            "subnet": "192.168.1.0/24",
-            "reservations": [
-                {"hw-address": "aa:bb:cc:dd:ee:ff", "ip-address": "192.168.1.100"},
-            ],
-        }]
-    })
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "192.168.1.0/24",
+                    "reservations": [
+                        {"hw-address": "aa:bb:cc:dd:ee:ff", "ip-address": "192.168.1.100"},
+                    ],
+                }
+            ]
+        }
+    )
     result = build(config)
     subnet = result["Dhcp4"]["subnet4"][0]
 
@@ -651,18 +731,22 @@ def test_reservations_array_present_when_defined():
 
 def test_reservation_kea_keys_hw_address_ip_address_hostname():
     """AC #2: hw-address, ip-address, hostname all appear with Kea hyphenated key names."""
-    config = _cfg({
-        "subnets": [{
-            "subnet": "192.168.1.0/24",
-            "reservations": [
+    config = _cfg(
+        {
+            "subnets": [
                 {
-                    "hw-address": "1a:1b:1c:1d:1e:1f",
-                    "ip-address": "192.168.1.100",
-                    "hostname": "printer",
-                },
-            ],
-        }]
-    })
+                    "subnet": "192.168.1.0/24",
+                    "reservations": [
+                        {
+                            "hw-address": "1a:1b:1c:1d:1e:1f",
+                            "ip-address": "192.168.1.100",
+                            "hostname": "printer",
+                        },
+                    ],
+                }
+            ]
+        }
+    )
     result = build(config)
     entry = result["Dhcp4"]["subnet4"][0]["reservations"][0]
 
@@ -677,21 +761,28 @@ def test_reservation_per_host_option_data_merge_by_name():
     Two entries with the same name collapse to one (most-specific wins), proving
     that merge_option_data is actually exercised rather than acting as a pass-through.
     """
-    config = _cfg({
-        "subnets": [{
-            "subnet": "192.168.1.0/24",
-            "reservations": [
+    config = _cfg(
+        {
+            "subnets": [
                 {
-                    "hw-address": "aa:bb:cc:dd:ee:ff",
-                    "ip-address": "192.168.1.100",
-                    "option-data": [
-                        {"name": "domain-name-servers", "data": "8.8.8.8"},
-                        {"name": "domain-name-servers", "data": "1.1.1.1"},  # duplicate name
+                    "subnet": "192.168.1.0/24",
+                    "reservations": [
+                        {
+                            "hw-address": "aa:bb:cc:dd:ee:ff",
+                            "ip-address": "192.168.1.100",
+                            "option-data": [
+                                {"name": "domain-name-servers", "data": "8.8.8.8"},
+                                {
+                                    "name": "domain-name-servers",
+                                    "data": "1.1.1.1",
+                                },  # duplicate name
+                            ],
+                        },
                     ],
-                },
-            ],
-        }]
-    })
+                }
+            ]
+        }
+    )
     result = build(config)
     entry = result["Dhcp4"]["subnet4"][0]["reservations"][0]
 
@@ -712,16 +803,20 @@ def test_no_reservations_key_when_empty():
 
 def test_multiple_reservations_in_yaml_order():
     """AC #5: multiple reservations appear as separate entries in YAML order."""
-    config = _cfg({
-        "subnets": [{
-            "subnet": "192.168.1.0/24",
-            "reservations": [
-                {"hw-address": "aa:bb:cc:dd:ee:01", "ip-address": "192.168.1.101"},
-                {"hw-address": "aa:bb:cc:dd:ee:02", "ip-address": "192.168.1.102"},
-                {"hw-address": "aa:bb:cc:dd:ee:03", "ip-address": "192.168.1.103"},
-            ],
-        }]
-    })
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "192.168.1.0/24",
+                    "reservations": [
+                        {"hw-address": "aa:bb:cc:dd:ee:01", "ip-address": "192.168.1.101"},
+                        {"hw-address": "aa:bb:cc:dd:ee:02", "ip-address": "192.168.1.102"},
+                        {"hw-address": "aa:bb:cc:dd:ee:03", "ip-address": "192.168.1.103"},
+                    ],
+                }
+            ]
+        }
+    )
     result = build(config)
     reservations = result["Dhcp4"]["subnet4"][0]["reservations"]
 
@@ -733,14 +828,18 @@ def test_multiple_reservations_in_yaml_order():
 
 def test_reservation_hostname_omitted_when_none():
     """Edge case: hostname is omitted from reservation entry when not provided."""
-    config = _cfg({
-        "subnets": [{
-            "subnet": "192.168.1.0/24",
-            "reservations": [
-                {"hw-address": "aa:bb:cc:dd:ee:ff", "ip-address": "192.168.1.100"},
-            ],
-        }]
-    })
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "192.168.1.0/24",
+                    "reservations": [
+                        {"hw-address": "aa:bb:cc:dd:ee:ff", "ip-address": "192.168.1.100"},
+                    ],
+                }
+            ]
+        }
+    )
     result = build(config)
     entry = result["Dhcp4"]["subnet4"][0]["reservations"][0]
 
@@ -749,14 +848,18 @@ def test_reservation_hostname_omitted_when_none():
 
 def test_reservation_option_data_omitted_when_empty():
     """Edge case: option-data key omitted when reservation has no option overrides."""
-    config = _cfg({
-        "subnets": [{
-            "subnet": "192.168.1.0/24",
-            "reservations": [
-                {"hw-address": "aa:bb:cc:dd:ee:ff", "ip-address": "192.168.1.100"},
-            ],
-        }]
-    })
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "192.168.1.0/24",
+                    "reservations": [
+                        {"hw-address": "aa:bb:cc:dd:ee:ff", "ip-address": "192.168.1.100"},
+                    ],
+                }
+            ]
+        }
+    )
     result = build(config)
     entry = result["Dhcp4"]["subnet4"][0]["reservations"][0]
 
@@ -765,19 +868,23 @@ def test_reservation_option_data_omitted_when_empty():
 
 def test_reservation_key_order():
     """Key order: hw-address → ip-address → hostname → option-data (Kea-natural)."""
-    config = _cfg({
-        "subnets": [{
-            "subnet": "192.168.1.0/24",
-            "reservations": [
+    config = _cfg(
+        {
+            "subnets": [
                 {
-                    "hw-address": "1a:1b:1c:1d:1e:1f",
-                    "ip-address": "192.168.1.100",
-                    "hostname": "printer",
-                    "option-data": [{"name": "domain-name-servers", "data": "8.8.4.4"}],
-                },
-            ],
-        }]
-    })
+                    "subnet": "192.168.1.0/24",
+                    "reservations": [
+                        {
+                            "hw-address": "1a:1b:1c:1d:1e:1f",
+                            "ip-address": "192.168.1.100",
+                            "hostname": "printer",
+                            "option-data": [{"name": "domain-name-servers", "data": "8.8.4.4"}],
+                        },
+                    ],
+                }
+            ]
+        }
+    )
     result = build(config)
     entry_keys = list(result["Dhcp4"]["subnet4"][0]["reservations"][0].keys())
 
@@ -786,15 +893,19 @@ def test_reservation_key_order():
 
 def test_reservations_appear_after_pools_in_subnet():
     """Subnet key order: reservations appears after pools."""
-    config = _cfg({
-        "subnets": [{
-            "subnet": "192.168.1.0/24",
-            "pools": [{"range": "192.168.1.10 - 192.168.1.50"}],
-            "reservations": [
-                {"hw-address": "aa:bb:cc:dd:ee:ff", "ip-address": "192.168.1.100"},
-            ],
-        }]
-    })
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "192.168.1.0/24",
+                    "pools": [{"range": "192.168.1.10 - 192.168.1.50"}],
+                    "reservations": [
+                        {"hw-address": "aa:bb:cc:dd:ee:ff", "ip-address": "192.168.1.100"},
+                    ],
+                }
+            ]
+        }
+    )
     result = build(config)
     subnet_keys = list(result["Dhcp4"]["subnet4"][0].keys())
 
@@ -809,15 +920,19 @@ def test_reservation_does_not_inherit_subnet_options():
     Kea handles option inheritance at runtime; the builder must emit only
     reservation-scope options (scope-isolation rule).
     """
-    config = _cfg({
-        "subnets": [{
-            "subnet": "192.168.1.0/24",
-            "dns-servers": ["8.8.8.8"],
-            "reservations": [
-                {"hw-address": "aa:bb:cc:dd:ee:ff", "ip-address": "192.168.1.100"},
-            ],
-        }]
-    })
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "192.168.1.0/24",
+                    "dns-servers": ["8.8.8.8"],
+                    "reservations": [
+                        {"hw-address": "aa:bb:cc:dd:ee:ff", "ip-address": "192.168.1.100"},
+                    ],
+                }
+            ]
+        }
+    )
     result = build(config)
     subnet = result["Dhcp4"]["subnet4"][0]
 
@@ -826,6 +941,64 @@ def test_reservation_does_not_inherit_subnet_options():
     # Reservation must NOT inherit it
     reservation = subnet["reservations"][0]
     assert "option-data" not in reservation
+
+
+# ---------------------------------------------------------------------------
+# Option profile inheritance
+# ---------------------------------------------------------------------------
+
+
+def test_option_profile_supplies_subnet_option_data_and_timer():
+    config = _cfg(
+        {
+            "dns-servers": ["8.8.8.8"],
+            "option_profiles": {
+                "corporate": {
+                    "dns-servers": ["1.1.1.1"],
+                    "valid-lifetime": 7200,
+                }
+            },
+            "subnets": [{"subnet": "192.168.1.0/24", "option_profile": "corporate"}],
+        }
+    )
+    subnet = build(config)["Dhcp4"]["subnet4"][0]
+    assert subnet["option-data"] == [{"name": "domain-name-servers", "data": "1.1.1.1"}]
+    assert subnet["valid-lifetime"] == 7200
+
+
+def test_inline_subnet_values_override_option_profile():
+    config = _cfg(
+        {
+            "option_profiles": {
+                "corporate": {
+                    "dns-servers": ["1.1.1.1"],
+                    "valid-lifetime": 7200,
+                }
+            },
+            "subnets": [
+                {
+                    "subnet": "192.168.1.0/24",
+                    "option_profile": "corporate",
+                    "dns-servers": ["2.2.2.2"],
+                    "valid-lifetime": 3600,
+                }
+            ],
+        }
+    )
+    subnet = build(config)["Dhcp4"]["subnet4"][0]
+    assert subnet["option-data"] == [{"name": "domain-name-servers", "data": "2.2.2.2"}]
+    assert subnet["valid-lifetime"] == 3600
+
+
+def test_unknown_option_profile_raises():
+    config = _cfg(
+        {
+            "option_profiles": {"corporate": {"dns-servers": ["1.1.1.1"]}},
+            "subnets": [{"subnet": "192.168.1.0/24", "option_profile": "corp"}],
+        }
+    )
+    with pytest.raises(KeaConfigError, match="corp"):
+        build(config)
 
 
 # ---------------------------------------------------------------------------
@@ -873,12 +1046,14 @@ def test_template_test_class_emits_template_test_field(fp_lib):
 
 def test_deduplication_across_subnets(fp_lib):
     """AC #4: same class referenced in two subnets → one top-level entry."""
-    config = _cfg({
-        "subnets": [
-            {"subnet": "10.0.1.0/24", "pools": [_pool_with_class("Windows_10_11")]},
-            {"subnet": "10.0.2.0/24", "pools": [_pool_with_class("Windows_10_11")]},
-        ]
-    })
+    config = _cfg(
+        {
+            "subnets": [
+                {"subnet": "10.0.1.0/24", "pools": [_pool_with_class("Windows_10_11")]},
+                {"subnet": "10.0.2.0/24", "pools": [_pool_with_class("Windows_10_11")]},
+            ]
+        }
+    )
     result = build(config, fingerprint_library=fp_lib)
     classes = result["Dhcp4"]["client-classes"]
     windows_entries = [e for e in classes if e["name"] == "Windows_10_11"]
@@ -887,15 +1062,63 @@ def test_deduplication_across_subnets(fp_lib):
 
 def test_class_order_first_occurrence_yaml_order(fp_lib):
     """AC #5: classes appear in first-occurrence YAML order (iOS before Windows)."""
-    config = _cfg({
-        "subnets": [
-            {"subnet": "10.0.1.0/24", "pools": [_pool_with_class("iOS_14_17")]},
-            {"subnet": "10.0.2.0/24", "pools": [_pool_with_class("Windows_10_11")]},
-        ]
-    })
+    config = _cfg(
+        {
+            "subnets": [
+                {"subnet": "10.0.1.0/24", "pools": [_pool_with_class("iOS_14_17")]},
+                {"subnet": "10.0.2.0/24", "pools": [_pool_with_class("Windows_10_11")]},
+            ]
+        }
+    )
     result = build(config, fingerprint_library=fp_lib)
     names = [e["name"] for e in result["Dhcp4"]["client-classes"]]
     assert names.index("iOS_14_17") < names.index("Windows_10_11")
+
+
+def test_subnet_client_class_emitted_as_top_level_entry(fp_lib):
+    """Subnet-level client-class is emitted ahead of pools in encounter order."""
+    config = _cfg(
+        {
+            "subnets": [
+                {"subnet": "10.0.1.0/24", "client-class": "Windows_10_11"},
+            ]
+        }
+    )
+    result = build(config, fingerprint_library=fp_lib)
+    assert result["Dhcp4"]["client-classes"][0]["name"] == "Windows_10_11"
+    assert result["Dhcp4"]["subnet4"][0]["client-class"] == "Windows_10_11"
+
+
+def test_subnet_client_class_precedes_later_pool_class(fp_lib):
+    """Subnet selector is scanned before that subnet's pools."""
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "10.0.1.0/24",
+                    "client-class": "Windows_10_11",
+                    "pools": [_pool_with_class("iOS_14_17")],
+                }
+            ]
+        }
+    )
+    result = build(config, fingerprint_library=fp_lib)
+    names = [e["name"] for e in result["Dhcp4"]["client-classes"]]
+    assert names == ["Windows_10_11", "iOS_14_17"]
+
+
+def test_custom_subnet_client_class_does_not_emit_top_level_entry(fp_lib):
+    """Custom subnet selector stays inline only; no top-level client-classes entry."""
+    config = _cfg(
+        {
+            "subnets": [
+                {"subnet": "10.0.1.0/24", "client-class": "MyCustomClass"},
+            ]
+        }
+    )
+    result = build(config, fingerprint_library=fp_lib)
+    assert "client-classes" not in result["Dhcp4"]
+    assert result["Dhcp4"]["subnet4"][0]["client-class"] == "MyCustomClass"
 
 
 def test_pool_emits_list_form_not_singular_client_class(fp_lib):
@@ -920,9 +1143,7 @@ def test_custom_class_absent_from_library_no_top_level_entry(fp_lib):
 
 def test_no_client_classes_key_when_no_pool_has_client_class(fp_lib):
     """AC #8: no pool with client-class → no client-classes key in Dhcp4."""
-    config = _cfg({
-        "subnets": [_minimal_subnet(pools=[{"range": "10.0.1.10 - 10.0.1.200"}])]
-    })
+    config = _cfg({"subnets": [_minimal_subnet(pools=[{"range": "10.0.1.10 - 10.0.1.200"}])]})
     result = build(config, fingerprint_library=fp_lib)
     assert "client-classes" not in result["Dhcp4"]
 
@@ -944,5 +1165,3 @@ def test_key_order_client_classes_before_subnet4(fp_lib):
     result = build(config, fingerprint_library=fp_lib)
     keys = list(result["Dhcp4"].keys())
     assert keys.index("client-classes") < keys.index("subnet4")
-
-

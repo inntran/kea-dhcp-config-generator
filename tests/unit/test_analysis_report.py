@@ -585,18 +585,18 @@ def test_format_pow2_exact_approx_and_minus():
     # Exact powers of two.
     assert _format_pow2(1) == "2^0"
     assert _format_pow2(256) == "2^8"
-    assert _format_pow2(2 ** 64) == "2^64"
+    assert _format_pow2(2**64) == "2^64"
 
     # Gap <= 4 below the next power -> "~2^n".
-    assert _format_pow2(2 ** 8 - 1) == "~2^8"     # gap 1
-    assert _format_pow2(2 ** 8 - 4) == "~2^8"     # gap 4 (boundary, inclusive)
-    assert _format_pow2(2 ** 64 - 2) == "~2^64"   # auto /64 span
+    assert _format_pow2(2**8 - 1) == "~2^8"  # gap 1
+    assert _format_pow2(2**8 - 4) == "~2^8"  # gap 4 (boundary, inclusive)
+    assert _format_pow2(2**64 - 2) == "~2^64"  # auto /64 span
 
     # Gap >= 5 below the next power -> "2^n - k" (always minus, never plus).
-    assert _format_pow2(2 ** 8 - 5) == "2^8 - 5"  # gap 5 (boundary)
-    assert _format_pow2(236) == "2^8 - 20"        # 256 - 20
-    assert _format_pow2(500) == "2^9 - 12"        # 512 - 12
-    assert _format_pow2(100) == "2^7 - 28"        # 128 - 28
+    assert _format_pow2(2**8 - 5) == "2^8 - 5"  # gap 5 (boundary)
+    assert _format_pow2(236) == "2^8 - 20"  # 256 - 20
+    assert _format_pow2(500) == "2^9 - 12"  # 512 - 12
+    assert _format_pow2(100) == "2^7 - 28"  # 128 - 28
 
     # Degenerate counts.
     assert _format_pow2(0) == "0"

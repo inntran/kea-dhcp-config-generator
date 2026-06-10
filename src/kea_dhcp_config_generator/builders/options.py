@@ -74,14 +74,10 @@ def merge_option_data(base: list[dict], override: list[dict]) -> list[dict]:
     merged: dict[str, dict] = {}
     for entry in base:
         if "name" not in entry:
-            raise ValueError(
-                f"option-data entry missing required 'name' key: {entry!r}"
-            )
+            raise ValueError(f"option-data entry missing required 'name' key: {entry!r}")
         merged[entry["name"]] = entry
     for entry in override:
         if "name" not in entry:
-            raise ValueError(
-                f"option-data entry missing required 'name' key: {entry!r}"
-            )
+            raise ValueError(f"option-data entry missing required 'name' key: {entry!r}")
         merged[entry["name"]] = entry
     return list(merged.values())

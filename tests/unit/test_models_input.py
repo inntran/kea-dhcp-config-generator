@@ -197,11 +197,7 @@ dhcp4:
         parse(raw)
     errors = exc_info.value.exceptions
     duration_error = next(
-        (
-            e
-            for e in errors
-            if "valid_lifetime" in e.yaml_path or "valid-lifetime" in e.yaml_path
-        ),
+        (e for e in errors if "valid_lifetime" in e.yaml_path or "valid-lifetime" in e.yaml_path),
         None,
     )
     assert duration_error is not None

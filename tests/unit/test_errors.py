@@ -86,9 +86,7 @@ def test_option_data_error_carries_all_fields():
 
 def test_option_data_error_caught_as_config_error():
     with pytest.raises(ConfigError):
-        raise OptionDataError(
-            message="test", yaml_path="path", line=None, suggestion=None
-        )
+        raise OptionDataError(message="test", yaml_path="path", line=None, suggestion=None)
 
 
 def test_fingerprint_error_is_subclass_of_config_error():
@@ -110,9 +108,7 @@ def test_fingerprint_error_carries_all_fields():
 
 def test_fingerprint_error_caught_as_config_error():
     with pytest.raises(ConfigError):
-        raise FingerprintError(
-            message="test", yaml_path="path", line=None, suggestion=None
-        )
+        raise FingerprintError(message="test", yaml_path="path", line=None, suggestion=None)
 
 
 def test_validation_result_defaults():
@@ -222,7 +218,6 @@ def test_validate_strict_false_keeps_warnings_non_fatal(
     assert len(result.warnings) == 1
 
 
-
 def test_validate_strict_true_promotes_warnings_to_errors(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
@@ -281,12 +276,7 @@ def test_validate_wraps_unexpected_non_configerror(tmp_path: Path, monkeypatch: 
 
 def test_validate_surfaces_semantic_errors(tmp_path: Path):
     cfg = tmp_path / "config.yaml"
-    cfg.write_text(
-        "dhcp4:\n"
-        "  subnets:\n"
-        "    - subnet: 10.0.4.0/23\n"
-        "    - subnet: 10.0.4.0/24\n"
-    )
+    cfg.write_text("dhcp4:\n  subnets:\n    - subnet: 10.0.4.0/23\n    - subnet: 10.0.4.0/24\n")
     result = validate(cfg)
     assert result.is_valid is False
     assert any(isinstance(e, SubnetConfigError) for e in result.errors)
@@ -348,6 +338,27 @@ def test_validate_strict_promotes_catch_all_warning_to_error(tmp_path: Path):
     assert any("catch-all" in e.message for e in result.errors)
 
 
+def test_validate_strict_promotes_dhcp6_catch_all_warning_to_error(tmp_path: Path):
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(
+        "dhcp6:\n"
+        "  subnets:\n"
+        '    - subnet: "2001:db8:1::/64"\n'
+        "      pools:\n"
+        "        - pool-type: na\n"
+        "          range: auto\n"
+        "          client-class: Android_12_14\n"
+        "        - pool-type: pd\n"
+        '          prefix: "2001:db8:1::"\n'
+        "          prefix-len: 48\n"
+        "          delegated-len: 64\n"
+        "          client-class: iOS_14_17\n"
+    )
+    result = validate(cfg, strict=True)
+    assert result.is_valid is False
+    assert any("catch-all" in e.message for e in result.errors)
+
+
 def test_validate_unknown_class_yields_fingerprint_error(tmp_path: Path):
     cfg = tmp_path / "config.yaml"
     cfg.write_text(
@@ -369,10 +380,6 @@ def test_validate_unknown_class_yields_fingerprint_error(tmp_path: Path):
 
 def test_validate_surfaces_version_mismatch_warning(tmp_path: Path):
     cfg = tmp_path / "config.yaml"
-    cfg.write_text(
-        "fingerprint_library_version: \"0.0.0-test-mismatch\"\n"
-        "dhcp4:\n"
-        "  subnets: []\n"
-    )
+    cfg.write_text('fingerprint_library_version: "0.0.0-test-mismatch"\ndhcp4:\n  subnets: []\n')
     result = validate(cfg)
     assert any("version mismatch" in w.message for w in result.warnings)
