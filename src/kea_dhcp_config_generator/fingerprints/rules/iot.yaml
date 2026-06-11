@@ -3,11 +3,11 @@
   kea_version_min: "3.0"
   kea_version_max: null
   source: "Spawns sub-classes from vendor class identifier for IoT device classification"
-  validated_against: "3.0.2"
+  validated_against: "3.0.3"
 
 - name: Tesla
   test: "option[55].hex == 0x01031afc2a0f060c"
   kea_version_min: "3.0"
   kea_version_max: null
   source: "DHCP PRL pattern validated from Tesla vehicles"
-  validated_against: "3.0.2"
+  validated_against: "3.0.3"

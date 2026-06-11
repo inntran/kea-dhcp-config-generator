@@ -3,11 +3,11 @@
   kea_version_min: "3.0"
   kea_version_max: null
   source: "DHCP PRL patterns validated from consumer home routers"
-  validated_against: "3.0.2"
+  validated_against: "3.0.3"
 
 - name: WRT
   test: "option[55].hex == 0x0103060c0f1c2a79"
   kea_version_min: "3.0"
   kea_version_max: null
   source: "DHCP PRL pattern validated from WRT-based router DHCP clients"
-  validated_against: "3.0.2"
+  validated_against: "3.0.3"

@@ -3,4 +3,4 @@
   kea_version_min: "3.0"
   kea_version_max: null
   source: "DHCP PRL patterns validated from macOS devices (covers multiple recent releases)"
-  validated_against: "3.0.2"
+  validated_against: "3.0.3"

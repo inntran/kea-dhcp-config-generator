@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://kea-dhcp-config-generator/_schema/kea-dhcp4.json",
   "title": "Kea DHCPv4 configuration (partial, 3.0.x)",
-  "description": "Partial JSON Schema covering the subset of Kea DHCPv4 keys emitted by builders/dhcp4.py. Tight types on known keys; additionalProperties:true elsewhere for forward-compatibility. Pinned to Kea 3.0.2. Story 8.3 will replace with an upstream-derived schema.",
+  "description": "Partial JSON Schema covering the subset of Kea DHCPv4 keys emitted by builders/dhcp4.py. Tight types on known keys; additionalProperties:true elsewhere for forward-compatibility. Pinned to Kea 3.0.3. Story 8.3 will replace with an upstream-derived schema.",
   "type": "object",
   "required": ["Dhcp4"],
   "additionalProperties": true,

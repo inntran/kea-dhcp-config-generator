@@ -3,18 +3,18 @@
   kea_version_min: "3.0"
   kea_version_max: null
   source: "DHCP PRL patterns validated from Windows 10 and Windows 11 DHCP clients"
-  validated_against: "3.0.2"
+  validated_against: "3.0.3"
 
 - name: Windows_7
   test: "option[55].hex == 0x010f03062c2e2f1f2179f92b"
   kea_version_min: "3.0"
   kea_version_max: null
   source: "DHCP PRL pattern validated from Windows 7 DHCP clients"
-  validated_against: "3.0.2"
+  validated_against: "3.0.3"
 
 - name: Windows_10_Old
   test: "option[55].hex == 0x0103060f1f212b2c2e2f79f9fc"
   kea_version_min: "3.0"
   kea_version_max: null
   source: "DHCP PRL pattern validated from older Windows 10 DHCP clients"
-  validated_against: "3.0.2"
+  validated_against: "3.0.3"

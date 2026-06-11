@@ -41,7 +41,7 @@ def test_schema_version_constant_matches_file():
     """AC #2, AC #10: SCHEMA_VERSION constant equals trimmed VERSION file."""
     raw = (files("kea_dhcp_config_generator") / "_schema" / "VERSION").read_text(encoding="utf-8")
     assert raw.strip() == output_schema.SCHEMA_VERSION
-    assert output_schema.SCHEMA_VERSION == "3.0.2"
+    assert output_schema.SCHEMA_VERSION == "3.0.3"
 
 
 # ---------------------------------------------------------------------------

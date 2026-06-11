@@ -3,11 +3,11 @@
   kea_version_min: "3.0"
   kea_version_max: null
   source: "DHCP PRL patterns validated from iOS 14–17 devices"
-  validated_against: "3.0.2"
+  validated_against: "3.0.3"
 
 - name: iOS_9_13
   test: "option[55].hex == 0x017903060f77fc"
   kea_version_min: "3.0"
   kea_version_max: null
   source: "DHCP PRL pattern validated from iOS 9–13 devices"
-  validated_against: "3.0.2"
+  validated_against: "3.0.3"

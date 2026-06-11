@@ -3,4 +3,4 @@
   kea_version_min: "3.0"
   kea_version_max: null
   source: "Detects locally administered MAC addresses via the LA bit in option 61 (Client Identifier)"
-  validated_against: "3.0.2"
+  validated_against: "3.0.3"
