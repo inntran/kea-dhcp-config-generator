@@ -243,6 +243,25 @@ class InterfacesConfigModel(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Lease Database model
+# ---------------------------------------------------------------------------
+
+
+class LeaseDbModel(BaseModel):
+    """Lease database configuration (Kea 3.2.0+)."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    type: Literal["memfile", "mysql", "postgresql"] = Field(...)
+    persist: bool | None = Field(None)
+    name: AsciiStr | None = Field(None)
+    host: AsciiStr | None = Field(None)
+    port: int | None = Field(None, ge=1, le=65535)
+    user: AsciiStr | None = Field(None)
+    password: AsciiStr | None = Field(None)
+
+
+# ---------------------------------------------------------------------------
 # DHCPv4 pool model
 # ---------------------------------------------------------------------------
 
