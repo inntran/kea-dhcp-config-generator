@@ -457,6 +457,10 @@ class Dhcp4Config(BaseModel):
     routers: list[AsciiStr] = Field(default_factory=list)
     option_data: list[dict[str, Any]] = Field(default_factory=list, alias="option-data")
     subnets: list[SubnetV4Model] = Field(default_factory=list)
+    control_sockets: list[ControlSocketModel] | None = Field(None, alias="control-sockets")
+    hooks_libraries: list[HooksLibraryModel] | None = Field(None, alias="hooks-libraries")
+    interfaces_config: InterfacesConfigModel | None = Field(None, alias="interfaces-config")
+    lease_database: LeaseDbModel | None = Field(None, alias="lease-database")
 
     @field_validator("valid_lifetime", "renew_timer", "rebind_timer", mode="before")
     @classmethod
@@ -478,6 +482,10 @@ class Dhcp6Config(BaseModel):
     dns_servers: list[AsciiStr] = Field(default_factory=list, alias="dns-servers")
     option_data: list[dict[str, Any]] = Field(default_factory=list, alias="option-data")
     subnets: list[SubnetV6Model] = Field(default_factory=list)
+    control_sockets: list[ControlSocketModel] | None = Field(None, alias="control-sockets")
+    hooks_libraries: list[HooksLibraryModel] | None = Field(None, alias="hooks-libraries")
+    interfaces_config: InterfacesConfigModel | None = Field(None, alias="interfaces-config")
+    lease_database: LeaseDbModel | None = Field(None, alias="lease-database")
 
     @field_validator(
         "valid_lifetime", "preferred_lifetime", "renew_timer", "rebind_timer", mode="before"
