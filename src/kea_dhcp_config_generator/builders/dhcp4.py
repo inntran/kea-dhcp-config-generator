@@ -65,12 +65,62 @@ def build(config: GlobalConfig, fingerprint_library: DHCPFingerprint | None = No
     if dhcp4.rebind_timer is not None:
         dhcp4_dict["rebind-timer"] = dhcp4.rebind_timer
 
+    # --- Control sockets (optional) ---
+    if dhcp4.control_sockets:
+        dhcp4_dict["control-sockets"] = [
+            {
+                "socket-type": cs.socket_type,
+                **({"socket-name": cs.socket_name} if cs.socket_name else {}),
+                **({"socket-address": cs.socket_address} if cs.socket_address else {}),
+                **({"socket-port": cs.socket_port} if cs.socket_port is not None else {}),
+            }
+            for cs in dhcp4.control_sockets
+        ]
+
+    # --- Interfaces config (optional) ---
+    if dhcp4.interfaces_config:
+        interfaces_dict = {
+            "interfaces": dhcp4.interfaces_config.interfaces,
+        }
+        if dhcp4.interfaces_config.dhcp_socket_type is not None:
+            interfaces_dict["dhcp-socket-type"] = dhcp4.interfaces_config.dhcp_socket_type
+        if dhcp4.interfaces_config.outbound_interface is not None:
+            interfaces_dict["outbound-interface"] = dhcp4.interfaces_config.outbound_interface
+        dhcp4_dict["interfaces-config"] = interfaces_dict
+
+    # --- Lease database (optional) ---
+    if dhcp4.lease_database:
+        db_dict = {"type": dhcp4.lease_database.type}
+        if dhcp4.lease_database.persist is not None:
+            db_dict["persist"] = dhcp4.lease_database.persist
+        if dhcp4.lease_database.name is not None:
+            db_dict["name"] = dhcp4.lease_database.name
+        if dhcp4.lease_database.host is not None:
+            db_dict["host"] = dhcp4.lease_database.host
+        if dhcp4.lease_database.port is not None:
+            db_dict["port"] = dhcp4.lease_database.port
+        if dhcp4.lease_database.user is not None:
+            db_dict["user"] = dhcp4.lease_database.user
+        if dhcp4.lease_database.password is not None:
+            db_dict["password"] = dhcp4.lease_database.password
+        dhcp4_dict["lease-database"] = db_dict
+
     # --- Global option-data (scalar fields merged with explicit option-data) ---
     global_option_data = _scope_option_data(dhcp4)
     if global_option_data:
         dhcp4_dict["option-data"] = global_option_data
 
     # --- Subnet list (client-classes immediately before subnet4, Kea-natural order) ---
+    # --- Hooks libraries (optional) --- (must come before subnet4)
+    if dhcp4.hooks_libraries:
+        dhcp4_dict["hooks-libraries"] = [
+            {
+                "library": hl.library,
+                **({"parameters": hl.parameters} if hl.parameters else {}),
+            }
+            for hl in dhcp4.hooks_libraries
+        ]
+
     if dhcp4.subnets:
         client_classes = _collect_client_classes(dhcp4, fingerprint_library)
         # Names that will exist as top-level client-class definitions in the

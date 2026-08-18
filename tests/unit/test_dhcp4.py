@@ -1463,3 +1463,290 @@ def test_key_order_client_classes_before_subnet4(fp_lib):
     result = build(config, fingerprint_library=fp_lib)
     keys = list(result["Dhcp4"].keys())
     assert keys.index("client-classes") < keys.index("subnet4")
+
+
+# ---------------------------------------------------------------------------
+# Task 7 — Control Sockets, Interfaces Config, Lease Database, Hooks Libraries
+# ---------------------------------------------------------------------------
+
+
+def test_build_dhcp4_with_control_socket():
+    """Control socket appears in output."""
+    from kea_dhcp_config_generator.models.input import ControlSocketModel, SubnetV4Model, Dhcp4Config, GlobalConfig
+
+    config = GlobalConfig.model_validate({
+        "dhcp4": {
+            "valid-lifetime": 3600,
+            "control-sockets": [
+                {"socket-type": "http", "socket-address": "127.0.0.1", "socket-port": 8004}
+            ],
+            "subnets": [
+                {"subnet": "10.0.0.0/24"}
+            ]
+        }
+    })
+    result = build(config)
+    assert "control-sockets" in result["Dhcp4"]
+    assert result["Dhcp4"]["control-sockets"][0]["socket-type"] == "http"
+    assert result["Dhcp4"]["control-sockets"][0]["socket-address"] == "127.0.0.1"
+
+
+def test_build_dhcp4_with_lease_database():
+    """Lease database appears in output."""
+    config = GlobalConfig.model_validate({
+        "dhcp4": {
+            "valid-lifetime": 3600,
+            "lease-database": {
+                "type": "postgresql",
+                "name": "kea",
+                "host": "db.example.com",
+                "port": 5432,
+                "user": "kea",
+                "password": "secret"
+            },
+            "subnets": [
+                {"subnet": "10.0.0.0/24"}
+            ]
+        }
+    })
+    result = build(config)
+    assert "lease-database" in result["Dhcp4"]
+    assert result["Dhcp4"]["lease-database"]["type"] == "postgresql"
+    assert result["Dhcp4"]["lease-database"]["host"] == "db.example.com"
+
+
+def test_control_socket_with_only_socket_type():
+    """Control socket with only socket-type and required socket-name."""
+    config = _cfg({
+        "control-sockets": [
+            {"socket-type": "unix", "socket-name": "/run/kea/control"}
+        ],
+        "subnets": [_minimal_subnet()],
+    })
+    result = build(config)
+    cs = result["Dhcp4"]["control-sockets"][0]
+    assert cs["socket-type"] == "unix"
+    assert cs["socket-name"] == "/run/kea/control"
+    assert "socket-address" not in cs
+    assert "socket-port" not in cs
+
+
+def test_control_socket_with_socket_name():
+    """Control socket with socket-name (unix domain socket)."""
+    config = _cfg({
+        "control-sockets": [
+            {"socket-type": "unix", "socket-name": "/run/kea/control"}
+        ],
+        "subnets": [_minimal_subnet()],
+    })
+    result = build(config)
+    cs = result["Dhcp4"]["control-sockets"][0]
+    assert cs["socket-type"] == "unix"
+    assert cs["socket-name"] == "/run/kea/control"
+    assert "socket-address" not in cs
+
+
+def test_multiple_control_sockets():
+    """Multiple control sockets all appear."""
+    config = _cfg({
+        "control-sockets": [
+            {"socket-type": "http", "socket-address": "127.0.0.1", "socket-port": 8004},
+            {"socket-type": "unix", "socket-name": "/run/kea/control"},
+        ],
+        "subnets": [_minimal_subnet()],
+    })
+    result = build(config)
+    assert len(result["Dhcp4"]["control-sockets"]) == 2
+    assert result["Dhcp4"]["control-sockets"][0]["socket-type"] == "http"
+    assert result["Dhcp4"]["control-sockets"][1]["socket-type"] == "unix"
+
+
+def test_interfaces_config_with_all_fields():
+    """Interfaces config with all optional fields."""
+    config = _cfg({
+        "interfaces-config": {
+            "interfaces": ["eth0", "eth1"],
+            "dhcp-socket-type": "udp",
+            "outbound-interface": "eth0",
+        },
+        "subnets": [_minimal_subnet()],
+    })
+    result = build(config)
+    iface_cfg = result["Dhcp4"]["interfaces-config"]
+    assert iface_cfg["interfaces"] == ["eth0", "eth1"]
+    assert iface_cfg["dhcp-socket-type"] == "udp"
+    assert iface_cfg["outbound-interface"] == "eth0"
+
+
+def test_interfaces_config_minimal():
+    """Interfaces config with only required interfaces field."""
+    config = _cfg({
+        "interfaces-config": {
+            "interfaces": ["eth0"],
+        },
+        "subnets": [_minimal_subnet()],
+    })
+    result = build(config)
+    iface_cfg = result["Dhcp4"]["interfaces-config"]
+    assert iface_cfg["interfaces"] == ["eth0"]
+    assert "dhcp-socket-type" not in iface_cfg
+    assert "outbound-interface" not in iface_cfg
+
+
+def test_lease_database_sqlite():
+    """Lease database with SQLite (minimal type)."""
+    config = _cfg({
+        "lease-database": {
+            "type": "memfile",
+        },
+        "subnets": [_minimal_subnet()],
+    })
+    result = build(config)
+    db = result["Dhcp4"]["lease-database"]
+    assert db["type"] == "memfile"
+    assert "persist" not in db
+    assert "name" not in db
+
+
+def test_lease_database_with_persist():
+    """Lease database with persist flag."""
+    config = _cfg({
+        "lease-database": {
+            "type": "memfile",
+            "persist": True,
+        },
+        "subnets": [_minimal_subnet()],
+    })
+    result = build(config)
+    db = result["Dhcp4"]["lease-database"]
+    assert db["type"] == "memfile"
+    assert db["persist"] is True
+
+
+def test_lease_database_mysql():
+    """Lease database with MySQL connection parameters."""
+    config = _cfg({
+        "lease-database": {
+            "type": "mysql",
+            "name": "kea_db",
+            "host": "db.example.com",
+            "port": 3306,
+            "user": "kea_user",
+            "password": "secret_pass",
+        },
+        "subnets": [_minimal_subnet()],
+    })
+    result = build(config)
+    db = result["Dhcp4"]["lease-database"]
+    assert db["type"] == "mysql"
+    assert db["name"] == "kea_db"
+    assert db["host"] == "db.example.com"
+    assert db["port"] == 3306
+    assert db["user"] == "kea_user"
+    assert db["password"] == "secret_pass"
+
+
+def test_hooks_libraries_with_parameters():
+    """Hooks libraries with parameters."""
+    config = _cfg({
+        "hooks-libraries": [
+            {
+                "library": "/usr/lib/kea/hooks/libdhcp_lease_query.so",
+                "parameters": {"key": "value"}
+            }
+        ],
+        "subnets": [_minimal_subnet()],
+    })
+    result = build(config)
+    assert "hooks-libraries" in result["Dhcp4"]
+    hl = result["Dhcp4"]["hooks-libraries"][0]
+    assert hl["library"] == "/usr/lib/kea/hooks/libdhcp_lease_query.so"
+    assert hl["parameters"] == {"key": "value"}
+
+
+def test_hooks_libraries_without_parameters():
+    """Hooks libraries without parameters."""
+    config = _cfg({
+        "hooks-libraries": [
+            {
+                "library": "/usr/lib/kea/hooks/libdhcp_ha.so",
+            }
+        ],
+        "subnets": [_minimal_subnet()],
+    })
+    result = build(config)
+    hl = result["Dhcp4"]["hooks-libraries"][0]
+    assert hl["library"] == "/usr/lib/kea/hooks/libdhcp_ha.so"
+    assert "parameters" not in hl
+
+
+def test_multiple_hooks_libraries():
+    """Multiple hooks libraries all appear."""
+    config = _cfg({
+        "hooks-libraries": [
+            {
+                "library": "/usr/lib/kea/hooks/libdhcp_ha.so",
+                "parameters": {"mode": "hot-standby"}
+            },
+            {
+                "library": "/usr/lib/kea/hooks/libdhcp_lease_query.so",
+            }
+        ],
+        "subnets": [_minimal_subnet()],
+    })
+    result = build(config)
+    hooks = result["Dhcp4"]["hooks-libraries"]
+    assert len(hooks) == 2
+    assert hooks[0]["library"] == "/usr/lib/kea/hooks/libdhcp_ha.so"
+    assert hooks[1]["library"] == "/usr/lib/kea/hooks/libdhcp_lease_query.so"
+
+
+def test_key_order_with_new_sections():
+    """Key ordering follows Kea-natural order: timers → control-sockets →
+    interfaces-config → lease-database → option-data → hooks-libraries → subnet4."""
+    config = _cfg({
+        "valid-lifetime": 3600,
+        "renew-timer": 900,
+        "rebind-timer": 1800,
+        "control-sockets": [{"socket-type": "http", "socket-address": "127.0.0.1", "socket-port": 8004}],
+        "interfaces-config": {"interfaces": ["eth0"]},
+        "lease-database": {"type": "memfile"},
+        "dns-servers": ["8.8.8.8"],
+        "hooks-libraries": [{"library": "/usr/lib/kea/hooks/libdhcp_ha.so"}],
+        "subnets": [_minimal_subnet()],
+    })
+    result = build(config)
+    keys = list(result["Dhcp4"].keys())
+
+    # Verify ordering
+    assert keys[0] == "valid-lifetime"
+    assert keys[1] == "renew-timer"
+    assert keys[2] == "rebind-timer"
+    assert "control-sockets" in keys
+    assert "interfaces-config" in keys
+    assert "lease-database" in keys
+    assert "option-data" in keys
+    assert "hooks-libraries" in keys
+    assert "subnet4" in keys
+
+    # Verify relative ordering
+    assert keys.index("control-sockets") < keys.index("interfaces-config")
+    assert keys.index("interfaces-config") < keys.index("lease-database")
+    assert keys.index("lease-database") < keys.index("option-data")
+    assert keys.index("option-data") < keys.index("hooks-libraries")
+    assert keys.index("hooks-libraries") < keys.index("subnet4")
+
+
+def test_no_new_sections_when_not_provided():
+    """When new sections are not provided, they don't appear in output."""
+    config = _cfg({
+        "valid-lifetime": 3600,
+        "subnets": [_minimal_subnet()],
+    })
+    result = build(config)
+    dhcp4 = result["Dhcp4"]
+
+    assert "control-sockets" not in dhcp4
+    assert "interfaces-config" not in dhcp4
+    assert "lease-database" not in dhcp4
+    assert "hooks-libraries" not in dhcp4
