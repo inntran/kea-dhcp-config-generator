@@ -188,6 +188,32 @@ class OptionProfileModel(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Control Socket model
+# ---------------------------------------------------------------------------
+
+
+class ControlSocketModel(BaseModel):
+    """Control socket configuration for API access (Kea 3.2.0+)."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    socket_type: Literal["unix", "http", "https"] = Field(..., alias="socket-type")
+    socket_name: AsciiStr | None = Field(None, alias="socket-name")
+    socket_address: AsciiStr | None = Field(None, alias="socket-address")
+    socket_port: int | None = Field(None, alias="socket-port", ge=1, le=65535)
+
+    @model_validator(mode="after")
+    def validate_socket_config(self) -> "ControlSocketModel":
+        """Ensure unix sockets have socket-name; http(s) have address."""
+        if self.socket_type == "unix" and not self.socket_name:
+            raise ValueError("unix socket requires 'socket-name'")
+        if self.socket_type in ("http", "https"):
+            if not self.socket_address:
+                raise ValueError(f"{self.socket_type} socket requires 'socket-address'")
+        return self
+
+
+# ---------------------------------------------------------------------------
 # DHCPv4 pool model
 # ---------------------------------------------------------------------------
 
