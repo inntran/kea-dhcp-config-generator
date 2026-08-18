@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://kea-dhcp-config-generator/_schema/kea-dhcp4.json",
-  "title": "Kea DHCPv4 configuration (partial, 3.0.x)",
-  "description": "Partial JSON Schema covering the subset of Kea DHCPv4 keys emitted by builders/dhcp4.py. Tight types on known keys; additionalProperties:true elsewhere for forward-compatibility. Pinned to Kea 3.0.3. Story 8.3 will replace with an upstream-derived schema.",
+  "title": "Kea DHCPv4 configuration (partial, 3.2.0)",
+  "description": "Partial JSON Schema covering the subset of Kea DHCPv4 keys emitted by builders/dhcp4.py. Tight types on known keys; additionalProperties:true elsewhere for forward-compatibility. Pinned to Kea 3.2.0.",
   "type": "object",
   "required": ["Dhcp4"],
   "additionalProperties": true,
@@ -25,6 +25,21 @@
         "subnet4": {
           "type": "array",
           "items": { "$ref": "#/$defs/subnet4Entry" }
+        },
+        "control-sockets": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/controlSocketEntry" },
+          "minItems": 1
+        },
+        "hooks-libraries": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/hooksLibraryEntry" }
+        },
+        "interfaces-config": {
+          "$ref": "#/$defs/interfacesConfigEntry"
+        },
+        "lease-database": {
+          "$ref": "#/$defs/leaseDatabaseEntry"
         }
       }
     }
@@ -114,6 +129,92 @@
         "option-data": {
           "type": "array",
           "items": { "$ref": "#/$defs/optionDataEntry" }
+        }
+      }
+    },
+    "controlSocketEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["socket-type"],
+      "properties": {
+        "socket-type": {
+          "type": "string",
+          "enum": ["unix", "http", "https"]
+        },
+        "socket-name": {
+          "type": "string"
+        },
+        "socket-address": {
+          "type": "string"
+        },
+        "socket-port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        }
+      }
+    },
+    "hooksLibraryEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["library"],
+      "properties": {
+        "library": {
+          "type": "string"
+        },
+        "parameters": {
+          "type": "object"
+        }
+      }
+    },
+    "interfacesConfigEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["interfaces"],
+      "properties": {
+        "interfaces": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "dhcp-socket-type": {
+          "type": "string",
+          "enum": ["udp", "raw"]
+        },
+        "outbound-interface": {
+          "type": "string"
+        }
+      }
+    },
+    "leaseDatabaseEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["memfile", "mysql", "postgresql"]
+        },
+        "persist": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "host": {
+          "type": "string"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "user": {
+          "type": "string"
+        },
+        "password": {
+          "type": "string"
         }
       }
     }
