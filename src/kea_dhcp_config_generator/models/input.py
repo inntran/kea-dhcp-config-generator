@@ -228,6 +228,21 @@ class HooksLibraryModel(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Interfaces Config model
+# ---------------------------------------------------------------------------
+
+
+class InterfacesConfigModel(BaseModel):
+    """Network interfaces configuration (Kea 3.2.0+)."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    interfaces: list[AsciiStr] = Field(...)
+    dhcp_socket_type: Literal["udp", "raw"] | None = Field(None, alias="dhcp-socket-type")
+    outbound_interface: AsciiStr | None = Field(None, alias="outbound-interface")
+
+
+# ---------------------------------------------------------------------------
 # DHCPv4 pool model
 # ---------------------------------------------------------------------------
 
