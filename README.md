@@ -42,6 +42,10 @@ validation.
   reservations, validation results).
 - **Library API.** Everything the CLI does is available as a Python library —
   `generate()` and `validate()` — for use in Ansible, CI, and other tooling.
+- **Control sockets for API access.** Configure HTTP/HTTPS API listeners (`control-sockets`) for remote management.
+- **Hook libraries for extensions.** Load plugins (`hooks-libraries`) for High Availability, RADIUS, DDNS, and other features.
+- **Network interface binding.** Explicitly specify which interfaces to listen on (`interfaces-config`) and socket types.
+- **Persistent lease storage.** Configure databases (`lease-database`) using memfile, MySQL, or PostgreSQL backends.
 
 ## Installation
 
@@ -153,6 +157,15 @@ At least one of `dhcp4` / `dhcp6` must be present.
   `option-data`. `domain-name` — a single string.
 - `option-data` — an explicit Kea `option-data` list when you need full control;
   merged by option name over the convenience fields (most-specific wins).
+
+### Control and API Configuration (optional, global or per-protocol)
+
+- `control-sockets` — list of control socket configurations for API access (HTTP/HTTPS/Unix)
+- `hooks-libraries` — list of hook library plugins to load
+- `interfaces-config` — network interfaces to listen on
+- `lease-database` — persistent lease storage configuration (memfile/mysql/postgresql)
+
+All are optional; omit if using defaults or file-only configuration.
 
 ### Subnets
 
@@ -275,6 +288,9 @@ The [`samples/`](samples/) directory contains ready-to-run service definitions:
 | [`minimal-dhcp4.yaml`](samples/minimal-dhcp4.yaml) | The smallest useful config: one subnet, one `auto` pool. |
 | [`office-dhcp4.yaml`](samples/office-dhcp4.yaml) | Timers, options, a fingerprint-classified pool, a catch-all pool, a MAC reservation. |
 | [`dual-stack.yaml`](samples/dual-stack.yaml) | DHCPv4 + DHCPv6 in one run, with NA + PD pools and a DUID reservation. |
+| [`control-api.yaml`](samples/control-api.yaml) | HTTP API socket for remote management. |
+| [`production-ha.yaml`](samples/production-ha.yaml) | High Availability setup with HA hook library and control socket. |
+| [`persistent-db.yaml`](samples/persistent-db.yaml) | PostgreSQL lease database backend for both DHCPv4 and DHCPv6. |
 
 ```bash
 kea-confgen -c samples/dual-stack.yaml --overwrite
