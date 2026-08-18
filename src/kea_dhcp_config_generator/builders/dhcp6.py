@@ -6,7 +6,8 @@ Public API:
 
 Key ordering follows Kea documentation examples (not alphabetical):
     Dhcp6 level:  valid-lifetime → preferred-lifetime → renew-timer → rebind-timer
-                  → option-data → client-classes → subnet6
+                  → control-sockets → interfaces-config → lease-database
+                  → hooks-libraries → option-data → client-classes → subnet6
     Subnet level: id → subnet → valid-lifetime → preferred-lifetime → renew-timer
                   → rebind-timer → option-data → pools → pd-pools → reservations
     NA pool:      pool → client-classes (only when set)
@@ -76,6 +77,26 @@ def build(config: GlobalConfig, fingerprint_library: DHCPFingerprint | None = No
         dhcp6_dict["renew-timer"] = dhcp6.renew_timer
     if dhcp6.rebind_timer is not None:
         dhcp6_dict["rebind-timer"] = dhcp6.rebind_timer
+
+    # --- API configuration (control sockets) ---
+    if dhcp6.control_sockets:
+        dhcp6_dict["control-sockets"] = [
+            socket.model_dump(by_alias=True) for socket in dhcp6.control_sockets
+        ]
+
+    # --- Network interface binding (interfaces config) ---
+    if dhcp6.interfaces_config is not None:
+        dhcp6_dict["interfaces-config"] = dhcp6.interfaces_config.model_dump(by_alias=True)
+
+    # --- Persistent storage (lease database) ---
+    if dhcp6.lease_database is not None:
+        dhcp6_dict["lease-database"] = dhcp6.lease_database.model_dump(by_alias=True)
+
+    # --- Plugin system (hooks libraries) ---
+    if dhcp6.hooks_libraries:
+        dhcp6_dict["hooks-libraries"] = [
+            lib.model_dump(by_alias=True) for lib in dhcp6.hooks_libraries
+        ]
 
     # --- Global option-data (scalar fields merged with explicit option-data) ---
     global_option_data = _scope_option_data(dhcp6)

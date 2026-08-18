@@ -361,3 +361,47 @@ def test_dhcp6_subnet_ids_independent_of_dhcp4():
     )
     ids = [s["id"] for s in build(config)["Dhcp6"]["subnet6"]]
     assert ids == [1]  # starts at 1 regardless of DHCPv4 having 2 subnets
+
+
+def test_build_dhcp6_with_control_socket():
+    """Control socket appears in DHCPv6 output."""
+    config = GlobalConfig.model_validate(
+        {
+            "dhcp6": {
+                "valid-lifetime": 7200,
+                "control-sockets": [
+                    {"socket-type": "unix", "socket-name": "kea6-ctrl-socket"}
+                ],
+                "subnets": [
+                    {"subnet": "2001:db8:1::/64"}
+                ]
+            }
+        }
+    )
+    result = build(config)
+    assert "control-sockets" in result["Dhcp6"]
+    assert result["Dhcp6"]["control-sockets"][0]["socket-type"] == "unix"
+    assert result["Dhcp6"]["control-sockets"][0]["socket-name"] == "kea6-ctrl-socket"
+
+
+def test_build_dhcp6_with_lease_database():
+    """Lease database appears in DHCPv6 output."""
+    config = GlobalConfig.model_validate(
+        {
+            "dhcp6": {
+                "valid-lifetime": 7200,
+                "lease-database": {
+                    "type": "memfile",
+                    "persist": True,
+                    "name": "/var/lib/kea/dhcp6.leases"
+                },
+                "subnets": [
+                    {"subnet": "2001:db8:1::/64"}
+                ]
+            }
+        }
+    )
+    result = build(config)
+    assert "lease-database" in result["Dhcp6"]
+    assert result["Dhcp6"]["lease-database"]["type"] == "memfile"
+    assert result["Dhcp6"]["lease-database"]["persist"] is True
