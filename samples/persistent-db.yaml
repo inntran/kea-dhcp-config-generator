@@ -1,0 +1,46 @@
+fingerprint_library_version: "0.1.0"
+
+dhcp4:
+  valid-lifetime: 3600
+
+  interfaces-config:
+    interfaces: ["eth0"]
+
+  lease-database:
+    type: postgresql
+    persist: true
+    name: kea
+    user: kea
+    password: kea_password
+    host: db.example.com
+    port: 5432
+
+  hooks-libraries:
+    - library: libdhcp_pgsql.so
+
+  subnets:
+    - subnet: 10.0.0.0/24
+      pools:
+        - range: auto
+          skip-start: 10
+
+dhcp6:
+  valid-lifetime: 7200
+
+  lease-database:
+    type: postgresql
+    persist: true
+    name: kea
+    user: kea
+    password: kea_password
+    host: db.example.com
+    port: 5432
+
+  hooks-libraries:
+    - library: libdhcp_pgsql.so
+
+  subnets:
+    - subnet: "2001:db8:1::/64"
+      pools:
+        - pool-type: na
+          range: auto
