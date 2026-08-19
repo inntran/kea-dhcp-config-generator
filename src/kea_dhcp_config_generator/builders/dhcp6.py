@@ -81,21 +81,51 @@ def build(config: GlobalConfig, fingerprint_library: DHCPFingerprint | None = No
     # --- API configuration (control sockets) ---
     if dhcp6.control_sockets:
         dhcp6_dict["control-sockets"] = [
-            socket.model_dump(by_alias=True) for socket in dhcp6.control_sockets
+            {
+                "socket-type": cs.socket_type,
+                **({"socket-name": cs.socket_name} if cs.socket_name else {}),
+                **({"socket-address": cs.socket_address} if cs.socket_address else {}),
+                **({"socket-port": cs.socket_port} if cs.socket_port is not None else {}),
+            }
+            for cs in dhcp6.control_sockets
         ]
 
     # --- Network interface binding (interfaces config) ---
     if dhcp6.interfaces_config is not None:
-        dhcp6_dict["interfaces-config"] = dhcp6.interfaces_config.model_dump(by_alias=True)
+        interfaces_dict = {
+            "interfaces": dhcp6.interfaces_config.interfaces,
+        }
+        if dhcp6.interfaces_config.dhcp_socket_type is not None:
+            interfaces_dict["dhcp-socket-type"] = dhcp6.interfaces_config.dhcp_socket_type
+        if dhcp6.interfaces_config.outbound_interface is not None:
+            interfaces_dict["outbound-interface"] = dhcp6.interfaces_config.outbound_interface
+        dhcp6_dict["interfaces-config"] = interfaces_dict
 
     # --- Persistent storage (lease database) ---
     if dhcp6.lease_database is not None:
-        dhcp6_dict["lease-database"] = dhcp6.lease_database.model_dump(by_alias=True)
+        db_dict = {"type": dhcp6.lease_database.type}
+        if dhcp6.lease_database.persist is not None:
+            db_dict["persist"] = dhcp6.lease_database.persist
+        if dhcp6.lease_database.name is not None:
+            db_dict["name"] = dhcp6.lease_database.name
+        if dhcp6.lease_database.host is not None:
+            db_dict["host"] = dhcp6.lease_database.host
+        if dhcp6.lease_database.port is not None:
+            db_dict["port"] = dhcp6.lease_database.port
+        if dhcp6.lease_database.user is not None:
+            db_dict["user"] = dhcp6.lease_database.user
+        if dhcp6.lease_database.password is not None:
+            db_dict["password"] = dhcp6.lease_database.password
+        dhcp6_dict["lease-database"] = db_dict
 
     # --- Plugin system (hooks libraries) ---
     if dhcp6.hooks_libraries:
         dhcp6_dict["hooks-libraries"] = [
-            lib.model_dump(by_alias=True) for lib in dhcp6.hooks_libraries
+            {
+                "library": hl.library,
+                **({"parameters": hl.parameters} if hl.parameters else {}),
+            }
+            for hl in dhcp6.hooks_libraries
         ]
 
     # --- Global option-data (scalar fields merged with explicit option-data) ---
