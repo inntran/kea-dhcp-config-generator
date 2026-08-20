@@ -1472,7 +1472,9 @@ def test_key_order_client_classes_before_subnet4(fp_lib):
 
 def test_build_dhcp4_with_control_socket():
     """Control socket appears in output."""
-    from kea_dhcp_config_generator.models.input import ControlSocketModel, SubnetV4Model, Dhcp4Config, GlobalConfig
+    from kea_dhcp_config_generator.models.input import (
+        GlobalConfig,
+    )
 
     config = GlobalConfig.model_validate({
         "dhcp4": {
@@ -1708,7 +1710,9 @@ def test_key_order_with_new_sections():
         "valid-lifetime": 3600,
         "renew-timer": 900,
         "rebind-timer": 1800,
-        "control-sockets": [{"socket-type": "http", "socket-address": "127.0.0.1", "socket-port": 8004}],
+        "control-sockets": [
+            {"socket-type": "http", "socket-address": "127.0.0.1", "socket-port": 8004}
+        ],
         "interfaces-config": {"interfaces": ["eth0"]},
         "lease-database": {"type": "memfile"},
         "dns-servers": ["8.8.8.8"],

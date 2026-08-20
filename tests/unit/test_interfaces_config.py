@@ -1,6 +1,7 @@
 import pytest
-from kea_dhcp_config_generator.models.input import InterfacesConfigModel
 from pydantic import ValidationError
+
+from kea_dhcp_config_generator.models.input import InterfacesConfigModel
 
 
 def test_interfaces_config_single_interface():

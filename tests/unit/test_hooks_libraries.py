@@ -1,8 +1,9 @@
 """Tests for HooksLibraryModel."""
 
 import pytest
-from kea_dhcp_config_generator.models.input import HooksLibraryModel
 from pydantic import ValidationError
+
+from kea_dhcp_config_generator.models.input import HooksLibraryModel
 
 
 def test_minimal_hooks_library():

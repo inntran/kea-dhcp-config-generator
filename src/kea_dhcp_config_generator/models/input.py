@@ -203,13 +203,12 @@ class ControlSocketModel(BaseModel):
     socket_port: int | None = Field(None, alias="socket-port", ge=1, le=65535)
 
     @model_validator(mode="after")
-    def validate_socket_config(self) -> "ControlSocketModel":
+    def validate_socket_config(self) -> ControlSocketModel:
         """Ensure unix sockets have socket-name; http(s) have address."""
         if self.socket_type == "unix" and not self.socket_name:
             raise ValueError("unix socket requires 'socket-name'")
-        if self.socket_type in ("http", "https"):
-            if not self.socket_address:
-                raise ValueError(f"{self.socket_type} socket requires 'socket-address'")
+        if self.socket_type in ("http", "https") and not self.socket_address:
+            raise ValueError(f"{self.socket_type} socket requires 'socket-address'")
         return self
 
 

@@ -1,8 +1,9 @@
 """Tests for LeaseDbModel (Kea 3.2.0+ lease database configuration)."""
 
 import pytest
-from kea_dhcp_config_generator.models.input import LeaseDbModel
 from pydantic import ValidationError
+
+from kea_dhcp_config_generator.models.input import LeaseDbModel
 
 
 def test_memfile_database_minimal():

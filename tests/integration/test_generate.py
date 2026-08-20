@@ -1,9 +1,7 @@
-"""Integration test for control-sockets, hooks-libraries, interfaces-config, lease-database features."""
+"""Integration test for control-sockets, hooks-libraries, interfaces-config, lease-database."""
 
-from pathlib import Path
 import json
-
-import pytest
+from pathlib import Path
 
 from kea_dhcp_config_generator import generate
 
@@ -26,11 +24,11 @@ def test_generate_control_hooks_db(tmp_path: Path):
     with open(result.dhcp4_path) as f:
         actual_dhcp4 = json.load(f)
 
-    assert actual_dhcp4 == expected_dhcp4, f"DHCPv4 mismatch"
+    assert actual_dhcp4 == expected_dhcp4, "DHCPv4 mismatch"
 
     with open("tests/integration/fixtures/expected/control-hooks-db-dhcp6.json") as f:
         expected_dhcp6 = json.load(f)
     with open(result.dhcp6_path) as f:
         actual_dhcp6 = json.load(f)
 
-    assert actual_dhcp6 == expected_dhcp6, f"DHCPv6 mismatch"
+    assert actual_dhcp6 == expected_dhcp6, "DHCPv6 mismatch"

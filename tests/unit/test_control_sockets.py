@@ -1,8 +1,9 @@
 """Unit tests for ControlSocketModel."""
 
 import pytest
-from kea_dhcp_config_generator.models.input import ControlSocketModel
 from pydantic import ValidationError
+
+from kea_dhcp_config_generator.models.input import ControlSocketModel
 
 
 def test_unix_socket_minimal():
