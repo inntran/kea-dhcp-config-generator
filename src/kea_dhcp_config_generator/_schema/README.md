@@ -18,7 +18,7 @@ before `writer.py` writes anything to disk.
 
 ## Pinned version
 
-`3.0.3` — selected per `_bmad-output/planning-artifacts/architecture.md`
+`3.0.4` — selected per `_bmad-output/planning-artifacts/architecture.md`
 ("bundled Kea 3.x JSON schema") and PRD risk notes around Kea 3.x evolution.
 Update both `VERSION` and the corresponding schema files together.
 
