@@ -1,0 +1,128 @@
+# Enterprise campus network: several VLANs/subnets, each host-classified by
+# device fingerprint (phones, laptops, IoT, network gear) into its own
+# address range with class-specific DNS/lease policy. Exercises nearly
+# every fingerprint rule shipped in fingerprints/rules/*.yaml across
+# multiple subnets, plus per-device static reservations layered on top of
+# class-restricted pools, dual valid-lifetime overrides, and a subnet that
+# is entirely reservation-driven (no dynamic pool at all).
+#
+#   kea-confgen -c samples/enterprise-classified.yaml --overwrite --analysis
+
+fingerprint_library_version: "0.1.0"
+
+option_profiles:
+  corp-default:
+    valid-lifetime: 8h
+    renew-timer: 4h
+    rebind-timer: 7h
+    dns-servers: ["10.1.0.10", "10.1.0.11"]
+    domain-name: "corp.internal"
+    ntp-servers: ["10.1.0.10"]
+
+  iot-restricted:
+    valid-lifetime: 24h
+    renew-timer: 12h
+    rebind-timer: 21h
+    dns-servers: ["10.1.9.10"]
+    domain-name: "iot.corp.internal"
+
+dhcp4:
+  valid-lifetime: 8h
+  renew-timer: 4h
+  rebind-timer: 7h
+  dns-servers: ["10.1.0.10", "10.1.0.11"]
+  domain-name: "corp.internal"
+  routers: ["10.1.0.1"]
+
+  subnets:
+    # --- VLAN 10: corporate laptops/desktops, split Windows vs macOS ---
+    - subnet: 10.1.10.0/24
+      id: 10
+      option-profile: corp-default
+      routers: ["10.1.10.1"]
+      pools:
+        - range: "10.1.10.20 - 10.1.10.120"
+          client-class: Windows_10_11
+        - range: "10.1.10.121 - 10.1.10.150"
+          client-class: Windows_7
+        - range: "10.1.10.151 - 10.1.10.200"
+          client-class: macOS
+        # unclassified corp devices (Linux workstations, etc.)
+        - range: "10.1.10.201 - 10.1.10.250"
+      reservations:
+        - hw-address: "00:50:56:aa:00:01"
+          ip-address: "10.1.10.10"
+          hostname: build-server-01
+        - hw-address: "00:50:56:aa:00:02"
+          ip-address: "10.1.10.11"
+          hostname: file-server-01
+
+    # --- VLAN 20: BYOD / mobile, split iOS vs Android generations ---
+    - subnet: 10.1.20.0/24
+      id: 20
+      option-profile: corp-default
+      routers: ["10.1.20.1"]
+      valid-lifetime: 2h  # mobile leases churn faster than desktops
+      pools:
+        - range: "10.1.20.20 - 10.1.20.90"
+          client-class: iOS_14_17
+        - range: "10.1.20.91 - 10.1.20.110"
+          client-class: iOS_9_13
+        - range: "10.1.20.111 - 10.1.20.180"
+          client-class: Android_12_14
+        - range: "10.1.20.181 - 10.1.20.200"
+          client-class: HuaweiAndroid
+        - range: "10.1.20.201 - 10.1.20.240"
+          client-class: OldAndroid
+        # unmatched BYOD (other OSes, spoofed vendor-class, etc.)
+        - range: "10.1.20.241 - 10.1.20.254"
+
+    # --- VLAN 30: network infrastructure (home/consumer-grade routers
+    # brought in by visiting vendors, plus WRT-based test APs) ---
+    - subnet: 10.1.30.0/26
+      id: 30
+      routers: ["10.1.30.1"]
+      dns-servers: ["10.1.0.10"]
+      valid-lifetime: 30m
+      pools:
+        - range: "10.1.30.10 - 10.1.30.30"
+          client-class: HomeRouter
+        - range: "10.1.30.31 - 10.1.30.50"
+          client-class: WRT
+        - range: "10.1.30.51 - 10.1.30.62"
+
+    # --- VLAN 90: IoT, using the template-test rule that spawns
+    # per-vendor sub-classes from option 60, plus explicit Tesla handling
+    # and the LocalMAC filter for randomized-MAC IoT devices. ---
+    - subnet: 10.1.90.0/23
+      id: 90
+      option-profile: iot-restricted
+      routers: ["10.1.90.1"]
+      pools:
+        - range: "10.1.90.10 - 10.1.90.199"
+          client-class: Tesla
+        - range: "10.1.90.200 - 10.1.90.254"
+          client-class: LocalMAC
+        # generic IoT pool, guarded by the template-spawned IoT_Generic
+        # sub-classes (per-vendor, derived from option 60 at runtime)
+        - range: "10.1.91.10 - 10.1.91.200"
+          client-class: IoT_Generic
+        # true catch-all: anything on this VLAN matching none of the above
+        - range: "10.1.91.201 - 10.1.91.250"
+
+    # --- VLAN 99: management network, 100% static reservations, no
+    # dynamic pool at all — validates a reservation-only subnet. ---
+    - subnet: 10.1.99.0/28
+      id: 99
+      routers: ["10.1.99.1"]
+      dns-servers: ["10.1.0.10"]
+      reservations:
+        - hw-address: "00:0c:29:aa:bb:01"
+          ip-address: "10.1.99.2"
+          hostname: core-switch-01
+        - hw-address: "00:0c:29:aa:bb:02"
+          ip-address: "10.1.99.3"
+          hostname: core-switch-02
+        - hw-address: "00:0c:29:aa:bb:03"
+          ip-address: "10.1.99.4"
+          hostname: firewall-mgmt

@@ -217,6 +217,20 @@ class ControlSocketModel(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+def _to_plain(v: Any) -> Any:
+    """Recursively strip ruamel CommentedMap/CommentedSeq down to dict/list.
+
+    parameters is typed dict[str, Any], so Pydantic passes nested YAML
+    containers through unconverted; jsonschema_rs's Rust validator rejects
+    those types outright, so they must be plain before reaching the builder.
+    """
+    if isinstance(v, dict):
+        return {k: _to_plain(x) for k, x in v.items()}
+    if isinstance(v, list):
+        return [_to_plain(x) for x in v]
+    return v
+
+
 class HooksLibraryModel(BaseModel):
     """Hook library configuration (Kea 3.2.0+)."""
 
@@ -224,6 +238,12 @@ class HooksLibraryModel(BaseModel):
 
     library: AsciiStr = Field(...)
     parameters: dict[str, Any] | None = Field(None)
+
+    @field_validator("parameters", mode="before")
+    @classmethod
+    def normalize_parameters(cls, v: Any) -> Any:
+        return _to_plain(v)
+
 
 # ---------------------------------------------------------------------------
 # Interfaces Config model
