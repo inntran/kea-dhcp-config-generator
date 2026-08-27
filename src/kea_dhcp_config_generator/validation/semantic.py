@@ -164,7 +164,10 @@ def _check_pool_bounds(
         broadcast = network.broadcast_address
 
         for k, pool in enumerate(subnet.pools):
-            if pool.range == "auto":
+            if pool.range is None or pool.range == "auto":
+                # "auto" and block-size/block-count pools are computed from
+                # the subnet itself (allocate_next_block enforces bounds for
+                # the latter), so they cannot be out of bounds by construction.
                 continue
             range_path = ("dhcp4", "subnets", i, "pools", k, "range")
             range_yaml_path = f"dhcp4.subnets[{i}].pools[{k}].range"

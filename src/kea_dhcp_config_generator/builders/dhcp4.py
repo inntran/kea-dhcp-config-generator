@@ -17,10 +17,11 @@ Kea option-data format at their respective scope; explicit option_data fields ar
 using merge-by-name semantics (most-specific wins).
 """
 
+import ipaddress
 from difflib import get_close_matches
 
 from kea_dhcp_config_generator.builders.options import merge_option_data
-from kea_dhcp_config_generator.builders.pools import calculate_pool_range, parse_pool_range
+from kea_dhcp_config_generator.builders.pools import allocate_next_block, parse_pool_range
 from kea_dhcp_config_generator.fingerprints import DHCPFingerprint
 from kea_dhcp_config_generator.models.input import (
     Dhcp4Config,
@@ -249,30 +250,80 @@ def _resolve_option_profile(
     raise KeaConfigError(message)
 
 
-def _resolve_pool_range(pool: PoolV4Model, subnet_cidr: str) -> str:
-    """Return the pool range as 'start - end'.
+def _resolve_pool_range(
+    pool: PoolV4Model, subnet_cidr: str, cursor: ipaddress.IPv4Address | None
+) -> tuple[str, ipaddress.IPv4Address | None]:
+    """Return (pool range as 'start - end', next cursor for the following pool).
 
-    If pool.range == "auto", calculates from subnet_cidr using ipaddress stdlib.
-    Otherwise parses the explicit 'x.x.x.x - y.y.y.y' string.
+    Three pool forms:
+      - explicit "x.x.x.x - y.y.y.y": parsed as-is; does not touch the cursor.
+      - "auto": normally spans the subnet's full usable range (skip-start/
+        skip-end applied), unchanged from prior behavior *unless* an earlier
+        block-size/block-count pool in the same subnet already advanced the
+        cursor — in that case "auto" starts from the cursor instead, so it
+        naturally becomes "everything block pools didn't claim" (a trailing
+        catch-all) rather than re-claiming the whole subnet and overlapping
+        them. Still advances the cursor itself, in case a block pool follows.
+      - block-size + block-count: claims the next block-aligned span of
+        addresses starting at or after `cursor` (or the subnet's first usable
+        address if this is the first block pool in the subnet), and returns
+        the address just past the claimed span as the new cursor so a later
+        pool in the same subnet continues from there.
     """
-    if pool.range == "auto":
-        start, end = calculate_pool_range(subnet_cidr, pool.skip_start, pool.skip_end)
-    else:
-        start, end = parse_pool_range(pool.range)
-    return f"{start} - {end}"
+    network = ipaddress.ip_network(subnet_cidr, strict=False)
+    has_reserved_endpoints = network.prefixlen <= 30
+    last_usable = (
+        network.broadcast_address - 1 if has_reserved_endpoints else network.broadcast_address
+    )
+    first_usable = (
+        network.network_address + 1 if has_reserved_endpoints else network.network_address
+    )
+
+    if pool.range is not None:
+        if pool.range == "auto":
+            start_addr = cursor if cursor is not None else first_usable
+            start_addr = start_addr + pool.skip_start
+            end_addr = last_usable - pool.skip_end
+            if start_addr > end_addr:
+                raise ValueError(
+                    f"auto pool range for {subnet_cidr!r} starting at {start_addr} "
+                    f"(after prior block pools and skip-start={pool.skip_start}) with "
+                    f"skip-end={pool.skip_end} produces an empty or inverted range "
+                    f"({start_addr} > {end_addr}). Reduce skip values or block-count."
+                )
+            start, end = str(start_addr), str(end_addr)
+            next_cursor = ipaddress.IPv4Address(int(end_addr) + 1)
+        else:
+            start, end = parse_pool_range(pool.range)
+            next_cursor = cursor
+        return f"{start} - {end}", next_cursor
+
+    if cursor is None:
+        cursor = first_usable
+
+    assert pool.block_size is not None and pool.block_count is not None
+    start, end, next_cursor = allocate_next_block(
+        cursor, pool.block_size, pool.block_count, last_usable
+    )
+    return f"{start} - {end}", next_cursor
 
 
-def _build_pool_entry(pool: PoolV4Model, subnet_cidr: str) -> dict:
+def _build_pool_entry(
+    pool: PoolV4Model, subnet_cidr: str, cursor: ipaddress.IPv4Address | None
+) -> tuple[dict, ipaddress.IPv4Address | None]:
     """Build a single Kea pool entry dict.
 
     Pool key order: pool → client-classes (Kea-natural).
     client-class on a pool maps to "client-classes": [value] (list form, Kea 3.x).
     The deprecated singular "client-class" field is never emitted on pools.
+
+    Returns (entry, next_cursor) — see _resolve_pool_range for cursor semantics.
     """
-    entry: dict = {"pool": _resolve_pool_range(pool, subnet_cidr)}
+    pool_range, next_cursor = _resolve_pool_range(pool, subnet_cidr, cursor)
+    entry: dict = {"pool": pool_range}
     if pool.client_class:
         entry["client-classes"] = [pool.client_class]
-    return entry
+    return entry, next_cursor
 
 
 def _build_reservation_entry(reservation: HostReservationV4Model) -> dict:
@@ -506,9 +557,10 @@ def _build_subnet4(
         # to each unguarded pool so the catch-all range serves only unmatched
         # clients (Kea evaluates the generated `not member(...)` test).
         if subnet.pools:
-            pool_entries: list[dict] = []
+            pool_entries = []
+            cursor: ipaddress.IPv4Address | None = None
             for pool in subnet.pools:
-                entry = _build_pool_entry(pool, subnet.subnet)
+                entry, cursor = _build_pool_entry(pool, subnet.subnet, cursor)
                 if catchall_name is not None and not pool.client_class:
                     entry["client-classes"] = [catchall_name]
                 pool_entries.append(entry)

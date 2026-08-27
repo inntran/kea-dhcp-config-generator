@@ -109,9 +109,24 @@ def _subnet_inventory(config: GlobalConfig) -> list[str]:
 
 
 def _count_v4_pool_ips(pools, subnet_cidr: str) -> int:
-    """Count total addressable IPs across all DHCPv4 pools in a subnet."""
+    """Count total addressable IPs across all DHCPv4 pools in a subnet.
+
+    block-size/block-count pools have a size independent of where the builder
+    ends up placing them (block_count * 2**(32 - block_size)), so their count
+    doesn't need the builder's sequential cursor — the report only needs a
+    total, not concrete placement.
+
+    A trailing "auto" pool that would follow block pools in the builder's
+    cursor-aware placement is approximated here using the whole-subnet
+    calculation (as if no block pools preceded it); this may overcount an
+    "auto" pool's contribution when block pools consumed part of the subnet,
+    which is an acceptable inexactness for a summary report.
+    """
     total = 0
     for pool in pools:
+        if pool.range is None:
+            total += pool.block_count * (2 ** (32 - pool.block_size))
+            continue
         if pool.range == "auto":
             start, end = calculate_pool_range(
                 subnet_cidr, skip_start=pool.skip_start, skip_end=pool.skip_end

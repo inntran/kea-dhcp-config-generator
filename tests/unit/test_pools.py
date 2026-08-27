@@ -1,6 +1,13 @@
 """Unit tests for builders/pools.py — pool range calculation and parsing."""
 
-from kea_dhcp_config_generator.builders.pools import calculate_pool_range, parse_pool_range
+import ipaddress
+
+from kea_dhcp_config_generator.builders.pools import (
+    align_up,
+    allocate_next_block,
+    calculate_pool_range,
+    parse_pool_range,
+)
 
 # ---------------------------------------------------------------------------
 # calculate_pool_range (AC #4, #5)
@@ -247,3 +254,78 @@ def test_calculate_pool_range_slash32_error_does_not_blame_skips():
         calculate_pool_range("10.0.1.1/32", skip_start=0, skip_end=0)
 
     assert "skip" not in str(exc_info.value).lower() or "skip_start=0" not in str(exc_info.value)
+
+
+# ---------------------------------------------------------------------------
+# align_up
+# ---------------------------------------------------------------------------
+
+
+def test_align_up_already_aligned():
+    addr = ipaddress.IPv4Address("10.0.1.0")
+    assert align_up(addr, 24) == addr
+
+
+def test_align_up_rounds_up_to_next_block():
+    addr = ipaddress.IPv4Address("10.0.1.37")
+    assert align_up(addr, 24) == ipaddress.IPv4Address("10.0.2.0")
+
+
+def test_align_up_subnet_start():
+    addr = ipaddress.IPv4Address("10.0.0.1")
+    assert align_up(addr, 24) == ipaddress.IPv4Address("10.0.1.0")
+
+
+# ---------------------------------------------------------------------------
+# allocate_next_block
+# ---------------------------------------------------------------------------
+
+
+def test_allocate_next_block_from_subnet_start():
+    cursor = ipaddress.IPv4Address("10.0.0.1")
+    last_usable = ipaddress.IPv4Address("10.0.255.254")
+    start, end, next_cursor = allocate_next_block(cursor, 24, 10, last_usable)
+
+    assert start == "10.0.1.0"
+    assert end == "10.0.10.255"
+    assert next_cursor == ipaddress.IPv4Address("10.0.11.0")
+
+
+def test_allocate_next_block_continues_from_prior_cursor():
+    cursor = ipaddress.IPv4Address("10.0.11.0")
+    last_usable = ipaddress.IPv4Address("10.0.255.254")
+    start, end, next_cursor = allocate_next_block(cursor, 24, 20, last_usable)
+
+    assert start == "10.0.11.0"
+    assert end == "10.0.30.255"
+    assert next_cursor == ipaddress.IPv4Address("10.0.31.0")
+
+
+def test_allocate_next_block_exceeding_bounds_raises():
+    import pytest
+
+    cursor = ipaddress.IPv4Address("10.0.0.1")
+    last_usable = ipaddress.IPv4Address("10.0.0.254")  # /24, only one block available
+
+    with pytest.raises(ValueError, match="exceeds the subnet's usable range"):
+        allocate_next_block(cursor, 24, 2, last_usable)
+
+
+def test_allocate_next_block_invalid_block_size_raises():
+    import pytest
+
+    cursor = ipaddress.IPv4Address("10.0.0.1")
+    last_usable = ipaddress.IPv4Address("10.0.255.254")
+
+    with pytest.raises(ValueError, match="block-size must be between 1 and 32"):
+        allocate_next_block(cursor, 33, 1, last_usable)
+
+
+def test_allocate_next_block_invalid_block_count_raises():
+    import pytest
+
+    cursor = ipaddress.IPv4Address("10.0.0.1")
+    last_usable = ipaddress.IPv4Address("10.0.255.254")
+
+    with pytest.raises(ValueError, match="block-count must be positive"):
+        allocate_next_block(cursor, 24, 0, last_usable)

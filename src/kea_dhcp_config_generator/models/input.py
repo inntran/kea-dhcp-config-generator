@@ -225,7 +225,6 @@ class HooksLibraryModel(BaseModel):
     library: AsciiStr = Field(...)
     parameters: dict[str, Any] | None = Field(None)
 
-
 # ---------------------------------------------------------------------------
 # Interfaces Config model
 # ---------------------------------------------------------------------------
@@ -266,14 +265,35 @@ class LeaseDbModel(BaseModel):
 
 
 class PoolV4Model(BaseModel):
-    """IPv4 DHCP pool configuration (FR7, FR9)."""
+    """IPv4 DHCP pool configuration (FR7, FR9).
+
+    Either ``range`` or (``block_size`` + ``block_count``) must be set, never
+    both. Block-based pools are resolved sequentially against the subnet by
+    the builder (see ``builders/pools.py:allocate_blocks``): each one claims
+    the next block-aligned span of addresses after whatever prior pools in
+    the same subnet already consumed, so the user never computes octets.
+    """
 
     model_config = ConfigDict(populate_by_name=True)
 
-    range: AsciiStr  # "auto" or "x.x.x.x - x.x.x.x"
+    range: AsciiStr | None = None  # "auto" or "x.x.x.x - x.x.x.x"
+    block_size: int | None = Field(None, alias="block-size", ge=1, le=32)
+    block_count: int | None = Field(None, alias="block-count", ge=1)
     skip_start: int = Field(0, alias="skip-start")
     skip_end: int = Field(0, alias="skip-end")
     client_class: AsciiStr | None = Field(None, alias="client-class")
+
+    @model_validator(mode="after")
+    def validate_range_or_block(self) -> PoolV4Model:
+        has_range = self.range is not None
+        has_block = self.block_size is not None or self.block_count is not None
+        if has_range and has_block:
+            raise ValueError("pool must set either 'range' or 'block-size'/'block-count', not both")
+        if not has_range and not has_block:
+            raise ValueError("pool must set either 'range' or 'block-size' + 'block-count'")
+        if has_block and (self.block_size is None or self.block_count is None):
+            raise ValueError("'block-size' and 'block-count' must be set together")
+        return self
 
 
 # ---------------------------------------------------------------------------

@@ -91,3 +91,54 @@ def parse_pool_range(range_str: str) -> tuple[str, str]:
             f"Invalid end IP address {end_str!r} in pool range {range_str!r}."
         ) from err
     return start_str, end_str
+
+
+def align_up(addr: ipaddress.IPv4Address, block_size: int) -> ipaddress.IPv4Address:
+    """Round addr up to the next address whose block_size-prefix block it starts.
+
+    e.g. align_up(10.0.1.37, 24) -> 10.0.2.0 (37 is inside 10.0.1.0/24, so the
+    next block-aligned address is the start of 10.0.2.0/24). If addr already
+    sits on a block boundary, it is returned unchanged.
+    """
+    block_len = 2 ** (32 - block_size)
+    addr_int = int(addr)
+    remainder = addr_int % block_len
+    if remainder == 0:
+        return addr
+    return ipaddress.IPv4Address(addr_int + (block_len - remainder))
+
+
+def allocate_next_block(
+    cursor: ipaddress.IPv4Address,
+    block_size: int,
+    block_count: int,
+    last_usable: ipaddress.IPv4Address,
+) -> tuple[str, str, ipaddress.IPv4Address]:
+    """Claim block_count consecutive block_size-prefix blocks starting at or
+    after cursor, aligned to a block_size boundary.
+
+    Returns (start_ip, end_ip, next_cursor) where next_cursor is the address
+    immediately after the claimed span (for the following pool in the same
+    subnet to continue from).
+
+    Raises ValueError if the claimed span would exceed last_usable.
+    """
+    if block_size < 1 or block_size > 32:
+        raise ValueError(f"block-size must be between 1 and 32, got {block_size}")
+    if block_count < 1:
+        raise ValueError(f"block-count must be positive, got {block_count}")
+
+    start = align_up(cursor, block_size)
+    block_len = 2 ** (32 - block_size)
+    span = block_len * block_count
+    end = ipaddress.IPv4Address(int(start) + span - 1)
+
+    if end > last_usable:
+        raise ValueError(
+            f"block-size={block_size}, block-count={block_count} starting at {start} "
+            f"needs {span} addresses through {end}, which exceeds the subnet's usable "
+            f"range (ends at {last_usable})."
+        )
+
+    next_cursor = ipaddress.IPv4Address(int(end) + 1)
+    return str(start), str(end), next_cursor

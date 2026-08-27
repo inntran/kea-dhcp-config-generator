@@ -418,6 +418,122 @@ def test_multiple_pools_all_resolved():
 
 
 # ---------------------------------------------------------------------------
+# block-size / block-count pools
+# ---------------------------------------------------------------------------
+
+
+def test_block_pool_single():
+    """A single block-size/block-count pool resolves to the expected /24 span."""
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "10.0.0.0/16",
+                    "pools": [{"block-size": 24, "block-count": 10}],
+                }
+            ]
+        }
+    )
+    result = build(config)
+    pool = result["Dhcp4"]["subnet4"][0]["pools"][0]
+
+    assert pool["pool"] == "10.0.1.0 - 10.0.10.255"
+
+
+def test_block_pools_pack_sequentially_no_overlap():
+    """Multiple block pools in one subnet pack back-to-back without overlap."""
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "10.0.0.0/16",
+                    "pools": [
+                        {"block-size": 24, "block-count": 10, "client-class": "Windows_10_11"},
+                        {"block-size": 24, "block-count": 20, "client-class": "macOS"},
+                        {"block-size": 24, "block-count": 100, "client-class": "Android_12_14"},
+                    ],
+                }
+            ]
+        }
+    )
+    result = build(config)
+    pools = result["Dhcp4"]["subnet4"][0]["pools"]
+
+    assert pools[0]["pool"] == "10.0.1.0 - 10.0.10.255"
+    assert pools[1]["pool"] == "10.0.11.0 - 10.0.30.255"
+    assert pools[2]["pool"] == "10.0.31.0 - 10.0.130.255"
+
+
+def test_auto_pool_after_block_pools_claims_remainder(fp_lib):
+    """A trailing 'auto' pool after block pools starts from the cursor, not the
+    subnet start — so it becomes a non-overlapping catch-all for whatever the
+    block pools didn't claim, instead of re-spanning the whole subnet."""
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "10.0.0.0/16",
+                    "pools": [
+                        {"block-size": 24, "block-count": 10, "client-class": "Windows_10_11"},
+                        {"range": "auto"},
+                    ],
+                }
+            ]
+        }
+    )
+    result = build(config, fingerprint_library=fp_lib)
+    pools = result["Dhcp4"]["subnet4"][0]["pools"]
+
+    assert pools[0]["pool"] == "10.0.1.0 - 10.0.10.255"
+    assert pools[1]["pool"] == "10.0.11.0 - 10.0.255.254"
+
+
+def test_block_pool_exceeding_subnet_raises():
+    """block-count too large for the subnet raises rather than silently wrapping."""
+    import pytest
+
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "10.0.0.0/24",
+                    "pools": [{"block-size": 24, "block-count": 2}],
+                }
+            ]
+        }
+    )
+    with pytest.raises(ValueError, match="exceeds the subnet's usable range"):
+        build(config)
+
+
+def test_range_and_block_mutually_exclusive():
+    """Pydantic rejects a pool that sets both range and block-size/block-count."""
+    import pytest
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="either 'range' or"):
+        _cfg(
+            {
+                "subnets": [
+                    {
+                        "subnet": "10.0.0.0/24",
+                        "pools": [{"range": "auto", "block-size": 24, "block-count": 1}],
+                    }
+                ]
+            }
+        )
+
+
+def test_pool_neither_range_nor_block_rejected():
+    """Pydantic rejects a pool that sets neither range nor block-size/block-count."""
+    import pytest
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="either 'range' or"):
+        _cfg({"subnets": [{"subnet": "10.0.0.0/24", "pools": [{}]}]})
+
+
+# ---------------------------------------------------------------------------
 # AC #6 — Pool client-class maps to "client-classes" list form
 # ---------------------------------------------------------------------------
 

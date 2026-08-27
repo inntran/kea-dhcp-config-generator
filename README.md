@@ -21,8 +21,11 @@ validation.
   `dhcp6:` sections writes both config files.
 - **Pool math.** `range: auto` expands to the usable address span (network and
   broadcast excluded for IPv4); explicit ranges and `skip-start` / `skip-end`
-  offsets are honoured. IPv6 NA pools and PD (prefix delegation) pools are
-  supported.
+  offsets are honoured. `block-size` / `block-count` carves N consecutive
+  blocks of a given prefix length (e.g. ten /24s) without hand-computing
+  octets — pools in a subnet pack back-to-back in declaration order, and a
+  trailing `range: auto` picks up whatever's left as a catch-all. IPv6 NA
+  pools and PD (prefix delegation) pools are supported.
 - **Friendly options.** Convenience fields like `dns-servers`, `domain-name`,
   `routers`, and `ntp-servers` are translated into the correct Kea
   `option-data` entries. Options inherit most-specific-wins (host > pool >
@@ -191,6 +194,24 @@ pools:
     skip-start: 10                    # leave the first N usable addresses free
     skip-end: 0
     client-class: iOS_14_17           # optional fingerprint rule name
+```
+
+A pool can instead claim N consecutive blocks of a given prefix length
+(`block-size` + `block-count`, mutually exclusive with `range`) — useful when
+carving a large subnet into per-class chunks without computing octets by
+hand. Pools in the same subnet pack back-to-back in declaration order:
+
+```yaml
+subnets:
+  - subnet: 10.0.0.0/16
+    pools:
+      - block-size: 24                # ten /24s: 10.0.1.0/24 - 10.0.10.0/24
+        block-count: 10
+        client-class: Windows_10_11
+      - block-size: 24                # next 20 /24s: 10.0.11.0/24 - 10.0.30.0/24
+        block-count: 20
+        client-class: macOS
+      - range: auto                   # everything left over: 10.0.31.0 - 10.0.255.254
 ```
 
 DHCPv6 pools use a `pool-type` discriminator:

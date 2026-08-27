@@ -1,0 +1,36 @@
+# Large /16 subnet carved into per-class blocks of /24s, computed by the
+# tool — no manual octet math required.
+#
+# Each pool below claims N contiguous /24-sized blocks via block-size +
+# block-count. Pools are packed back-to-back in declaration order within
+# the subnet (the builder tracks a cursor across the pool list), so classes
+# never overlap even though nothing here spells out an address. A trailing
+# `range: auto` picks up whatever's left after the block pools as the
+# catch-all, also cursor-aware so it doesn't re-claim addresses already
+# given to A/B/C.
+#
+#   kea-confgen -c samples/large-subnet-classified.yaml --overwrite --analysis
+
+dhcp4:
+  valid-lifetime: 4h
+  renew-timer: 2h
+  rebind-timer: 3h
+  dns-servers: ["10.0.0.1"]
+  routers: ["10.0.0.1"]
+
+  subnets:
+    - subnet: 10.0.0.0/16
+      pools:
+        - block-size: 24
+          block-count: 10
+          client-class: Windows_10_11
+        - block-size: 24
+          block-count: 20
+          client-class: macOS
+        - block-size: 24
+          block-count: 100
+          client-class: Android_12_14
+        # catch-all: everything the three block pools above didn't claim,
+        # from the end of the Android_12_14 block through the subnet's
+        # last usable address.
+        - range: auto
