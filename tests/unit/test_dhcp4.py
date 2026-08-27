@@ -740,6 +740,154 @@ def test_pool_key_order_without_client_class():
 
 
 # ---------------------------------------------------------------------------
+# Pool-level option-data
+# ---------------------------------------------------------------------------
+
+
+def test_pool_option_data_emitted():
+    """A pool's explicit option-data appears in the built pool entry."""
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "10.0.1.0/24",
+                    "pools": [
+                        {
+                            "range": "auto",
+                            "option-data": [
+                                {"name": "boot-file-name", "data": "bootx64.efi"},
+                                {"name": "tftp-server-name", "data": "10.0.1.5"},
+                            ],
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+    result = build(config)
+    pool = result["Dhcp4"]["subnet4"][0]["pools"][0]
+
+    assert pool["option-data"] == [
+        {"name": "boot-file-name", "data": "bootx64.efi"},
+        {"name": "tftp-server-name", "data": "10.0.1.5"},
+    ]
+
+
+def test_pool_without_option_data_has_no_key():
+    """A pool with no option-data omits the key entirely."""
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "10.0.1.0/24",
+                    "pools": [{"range": "auto"}],
+                }
+            ]
+        }
+    )
+    result = build(config)
+    pool = result["Dhcp4"]["subnet4"][0]["pools"][0]
+
+    assert "option-data" not in pool
+
+
+def test_pool_key_order_with_option_data_and_client_class():
+    """Key order is pool -> client-classes -> option-data, matching the
+    bundled schema's poolEntry property order."""
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "10.0.1.0/24",
+                    "pools": [
+                        {
+                            "range": "auto",
+                            "client-class": "Windows_10_11",
+                            "option-data": [{"name": "boot-file-name", "data": "pxelinux.0"}],
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+    result = build(config)
+    pool_keys = list(result["Dhcp4"]["subnet4"][0]["pools"][0].keys())
+
+    assert pool_keys == ["pool", "client-classes", "option-data"]
+
+
+def test_pool_key_order_with_option_data_and_synthesized_catchall(fp_lib):
+    """Key order stays pool -> client-classes -> option-data even when the
+    client-classes entry is a synthesized CatchAll (inserted after the pool
+    entry is already built), not a user-supplied client-class."""
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "10.0.1.0/24",
+                    "pools": [
+                        {"range": "10.0.1.10 - 10.0.1.100", "client-class": "Windows_10_11"},
+                        {
+                            "range": "10.0.1.101 - 10.0.1.200",
+                            "option-data": [{"name": "boot-file-name", "data": "pxelinux.0"}],
+                        },
+                    ],
+                }
+            ]
+        }
+    )
+    result = build(config, fingerprint_library=fp_lib)
+    catchall_pool = result["Dhcp4"]["subnet4"][0]["pools"][1]
+
+    assert list(catchall_pool.keys()) == ["pool", "client-classes", "option-data"]
+    assert catchall_pool["client-classes"] == ["CatchAll_1"]
+    assert catchall_pool["option-data"] == [{"name": "boot-file-name", "data": "pxelinux.0"}]
+
+
+def test_different_pools_have_different_option_data():
+    """Per-class PXE scenario: different pools in the same subnet each carry
+    their own boot-file-name/tftp-server-name via option-data."""
+    config = _cfg(
+        {
+            "subnets": [
+                {
+                    "subnet": "10.20.0.0/24",
+                    "pools": [
+                        {
+                            "range": "10.20.0.10 - 10.20.0.49",
+                            "client-class": "PXE_UEFI_x64",
+                            "option-data": [
+                                {"name": "boot-file-name", "data": "bootx64.efi"},
+                                {"name": "tftp-server-name", "data": "10.20.0.5"},
+                            ],
+                        },
+                        {
+                            "range": "10.20.0.50 - 10.20.0.89",
+                            "client-class": "PXE_UEFI_ARM64",
+                            "option-data": [
+                                {"name": "boot-file-name", "data": "bootaa64.efi"},
+                                {"name": "tftp-server-name", "data": "10.20.0.6"},
+                            ],
+                        },
+                    ],
+                }
+            ]
+        }
+    )
+    result = build(config)
+    pools = result["Dhcp4"]["subnet4"][0]["pools"]
+
+    assert pools[0]["option-data"] == [
+        {"name": "boot-file-name", "data": "bootx64.efi"},
+        {"name": "tftp-server-name", "data": "10.20.0.5"},
+    ]
+    assert pools[1]["option-data"] == [
+        {"name": "boot-file-name", "data": "bootaa64.efi"},
+        {"name": "tftp-server-name", "data": "10.20.0.6"},
+    ]
+
+
+# ---------------------------------------------------------------------------
 # Additional integration-style tests
 # ---------------------------------------------------------------------------
 

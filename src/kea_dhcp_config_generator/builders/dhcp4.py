@@ -313,7 +313,8 @@ def _build_pool_entry(
 ) -> tuple[dict, ipaddress.IPv4Address | None]:
     """Build a single Kea pool entry dict.
 
-    Pool key order: pool → client-classes (Kea-natural).
+    Pool key order: pool → client-classes → option-data (Kea-natural, matches
+    the bundled schema's poolEntry property order).
     client-class on a pool maps to "client-classes": [value] (list form, Kea 3.x).
     The deprecated singular "client-class" field is never emitted on pools.
 
@@ -323,6 +324,9 @@ def _build_pool_entry(
     entry: dict = {"pool": pool_range}
     if pool.client_class:
         entry["client-classes"] = [pool.client_class]
+    option_data = merge_option_data([], pool.option_data)
+    if option_data:
+        entry["option-data"] = option_data
     return entry, next_cursor
 
 
@@ -562,7 +566,12 @@ def _build_subnet4(
             for pool in subnet.pools:
                 entry, cursor = _build_pool_entry(pool, subnet.subnet, cursor)
                 if catchall_name is not None and not pool.client_class:
+                    # Insert before option-data (if present) to preserve
+                    # Kea-natural key order: pool → client-classes → option-data.
+                    option_data = entry.pop("option-data", None)
                     entry["client-classes"] = [catchall_name]
+                    if option_data is not None:
+                        entry["option-data"] = option_data
                 pool_entries.append(entry)
             subnet_dict["pools"] = pool_entries
 

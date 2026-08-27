@@ -194,7 +194,15 @@ pools:
     skip-start: 10                    # leave the first N usable addresses free
     skip-end: 0
     client-class: iOS_14_17           # optional fingerprint rule name
+    option-data:                      # optional; overrides subnet/global for this pool
+      - name: boot-file-name
+        data: "bootx64.efi"
 ```
+
+Pool-level `option-data` is the way to give each client class its own
+options — e.g. a different `boot-file-name`/`tftp-server-name` per PXE
+architecture pool in the same subnet (see
+[`samples/pxe-multiboot.yaml`](samples/pxe-multiboot.yaml)).
 
 A pool can instead claim N consecutive blocks of a given prefix length
 (`block-size` + `block-count`, mutually exclusive with `range`) — useful when

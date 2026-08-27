@@ -1,0 +1,134 @@
+# Combined stress scenario: HA-paired DHCPv4 with UEFI/BIOS PXE boot
+# classification AND a DHCPv6 stateful+PD network for the same campus,
+# generated in a single run. Exercises control-sockets, hooks-libraries
+# (HA), interfaces-config, lease-database (postgresql), option profiles,
+# multi-arch PXE pools, and IPv6 NA+PD pools with a DUID reservation,
+# all together.
+#
+#   kea-confgen -c samples/pxe-dual-stack-ha.yaml --overwrite --analysis
+
+fingerprint_library_version: "0.1.0"
+
+option_profiles:
+  site-a:
+    dns-servers: ["10.5.0.10", "10.5.0.11"]
+    domain-name: "site-a.example.com"
+    ntp-servers: ["10.5.0.10"]
+    routers: ["10.5.0.1"]
+
+dhcp4:
+  valid-lifetime: 4h
+  renew-timer: 2h
+  rebind-timer: 12600  # 3h30m
+
+  lease-database:
+    type: postgresql
+    name: kea_dhcp4
+    host: 10.5.0.20
+    port: 5432
+    user: kea
+    password: "changeme-in-vault"
+
+  control-sockets:
+    - socket-type: http
+      socket-address: 127.0.0.1
+      socket-port: 8004
+
+  interfaces-config:
+    interfaces: ["eth0", "eth1"]
+    dhcp-socket-type: raw
+
+  hooks-libraries:
+    - library: libdhcp_ha.so
+      parameters:
+        high-availability:
+          - this-server-name: dhcp-site-a-1
+            mode: hot-standby
+            heartbeat-delay: 2000
+            max-heartbeat-delay: 4000
+            max-ack-delay: 2000
+            max-unacked-clients: 2
+            peers:
+              - name: dhcp-site-a-1
+                url: "http://10.5.0.21:8004"
+                role: primary
+              - name: dhcp-site-a-2
+                url: "http://10.5.0.22:8004"
+                role: standby
+
+  subnets:
+    - subnet: 10.5.0.0/22
+      option-profile: site-a
+      option-data:
+        - name: next-server
+          data: "10.5.0.5"
+        - name: tftp-server-name
+          data: "10.5.0.5"
+      pools:
+        # Each PXE class needs its own boot-file-name — a legacy BIOS client
+        # cannot execute a UEFI .efi binary and vice versa — set per-pool.
+        - range: "10.5.0.30 - 10.5.0.90"
+          client-class: PXE_UEFI_x64
+          option-data:
+            - name: boot-file-name
+              data: "bootx64.efi"
+        - range: "10.5.0.91 - 10.5.0.120"
+          client-class: PXE_BIOS_Legacy
+          option-data:
+            - name: boot-file-name
+              data: "pxelinux.0"
+        - range: "10.5.1.10 - 10.5.3.250"
+      reservations:
+        - hw-address: "00:1a:2b:3c:4d:60"
+          ip-address: "10.5.0.5"
+          hostname: pxe-imaging-console
+          option-data:
+            - name: boot-file-name
+              data: "custom-imaging-menu.efi"
+
+dhcp6:
+  valid-lifetime: 4h
+  preferred-lifetime: 2h
+  renew-timer: 1h
+  rebind-timer: 5400  # 1h30m
+  dns-servers: ["2001:db8:5::10", "2001:db8:5::11"]
+
+  control-sockets:
+    - socket-type: unix
+      socket-name: /tmp/kea-dhcp6-ctrl.sock
+
+  hooks-libraries:
+    - library: libdhcp_ha.so
+      parameters:
+        high-availability:
+          - this-server-name: dhcp6-site-a-1
+            mode: hot-standby
+            heartbeat-delay: 2000
+            max-heartbeat-delay: 4000
+            max-ack-delay: 2000
+            max-unacked-clients: 2
+            peers:
+              - name: dhcp6-site-a-1
+                url: "http://[2001:db8:5::21]:8004"
+                role: primary
+              - name: dhcp6-site-a-2
+                url: "http://[2001:db8:5::22]:8004"
+                role: standby
+
+  subnets:
+    - subnet: "2001:db8:5::/48"
+      id: 5
+      pools:
+        - pool-type: na
+          range: "2001:db8:5::1000 - 2001:db8:5::1fff"
+          client-class: macOS
+        - pool-type: na
+          range: "2001:db8:5::2000 - 2001:db8:5::2fff"
+        - pool-type: pd
+          prefix: "2001:db8:5:1000::"
+          prefix-len: 52
+          delegated-len: 60
+      reservations:
+        - duid: "00:03:00:01:00:1a:2b:3c:4d:60"
+          ip-address: "2001:db8:5::5"
+          hostname: pxe-imaging-console-v6

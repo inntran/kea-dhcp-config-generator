@@ -1,0 +1,27 @@
+- name: PXE_BIOS_Legacy
+  test: "option[93].hex == 0x0000"
+  kea_version_min: "3.0"
+  kea_version_max: null
+  source: "RFC 4578 client-system-architecture (option 93): type 0 = legacy BIOS PXE"
+  validated_against: "3.0.4"
+
+- name: PXE_UEFI_x64
+  test: "option[93].hex == 0x0007 or option[93].hex == 0x0009"
+  kea_version_min: "3.0"
+  kea_version_max: null
+  source: "RFC 4578 client-system-architecture (option 93): types 7/9 = UEFI x86-64"
+  validated_against: "3.0.4"
+
+- name: PXE_UEFI_ARM64
+  test: "option[93].hex == 0x000b"
+  kea_version_min: "3.0"
+  kea_version_max: null
+  source: "https://www.iana.org/assignments/dhcpv6-parameters#processor-architecture, type 11(0x0b) = UEFI ARM64"
+  validated_against: "3.0.4"
+
+- name: iPXE_Client
+  test: "substring(option[60].text, 0, 4) == 'iPXE'"
+  kea_version_min: "3.0"
+  kea_version_max: null
+  source: "Vendor class identifier (option 60) set by iPXE itself on second-stage boot, used to avoid re-chainloading iPXE"
+  validated_against: "3.0.4"

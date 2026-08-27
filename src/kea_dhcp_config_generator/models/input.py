@@ -282,6 +282,7 @@ class PoolV4Model(BaseModel):
     skip_start: int = Field(0, alias="skip-start")
     skip_end: int = Field(0, alias="skip-end")
     client_class: AsciiStr | None = Field(None, alias="client-class")
+    option_data: list[dict[str, Any]] = Field(default_factory=list, alias="option-data")
 
     @model_validator(mode="after")
     def validate_range_or_block(self) -> PoolV4Model:

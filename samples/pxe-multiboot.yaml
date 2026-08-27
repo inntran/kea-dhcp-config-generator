@@ -1,0 +1,99 @@
+# Multi-platform PXE/network-boot environment: a single subnet serving
+# UEFI x86_64, legacy BIOS, UEFI ARM64, and iPXE chainload clients, each
+# routed to the correct bootloader via DHCP option 60/93 classification.
+#
+# Real-world pattern: option 93 (client-system-architecture) tells the
+# server what firmware is asking, and iPXE clients self-identify via a
+# distinct vendor-class-identifier (option 60 == "iPXE") so the second
+# DHCPREQUEST (after the client has already chainloaded once) gets a
+# different, larger boot script instead of looping back into iPXE itself.
+#
+# Each PXE class needs its OWN boot-file-name (a UEFI x64 client cannot
+# execute an ARM64 or legacy-BIOS binary) and, in this example, its own
+# next-server/tftp-server-name too (the imaging console runs a separate
+# TFTP root per architecture). That's set via per-pool option-data, which
+# overrides the subnet-level defaults for clients landing in that pool.
+#
+#   kea-confgen -c samples/pxe-multiboot.yaml --overwrite
+
+fingerprint_library_version: "0.1.0"
+
+option_profiles:
+  pxe-common:
+    dns-servers: ["10.20.0.1", "10.20.0.2"]
+    domain-name: "boot.example.com"
+    ntp-servers: ["10.20.0.1"]
+    routers: ["10.20.0.1"]
+
+dhcp4:
+  valid-lifetime: 1h
+  renew-timer: 30m
+  rebind-timer: 45m
+
+  interfaces-config:
+    interfaces: ["eth0"]
+
+  subnets:
+    - subnet: 10.20.0.0/22
+      option-profile: pxe-common
+      # Fallback next-server/boot-file-name for clients that match none of
+      # the arch-specific classes below (belt-and-braces; the catch-all pool
+      # itself carries no boot-file-name, so a non-PXE client just ignores
+      # these — but a PXE client that somehow lands in the catch-all still
+      # gets something bootable instead of nothing).
+      option-data:
+        - name: next-server
+          data: "10.20.0.5"
+        - name: tftp-server-name
+          data: "10.20.0.5"
+        - name: boot-file-name
+          data: "pxelinux.0"
+
+      pools:
+        # --- iPXE chainload clients (already booted once, option 60 == "iPXE") ---
+        # Kea client classes below match on vendor-class-identifier text so
+        # these get the *second-stage* script instead of re-entering iPXE.
+        - range: "10.20.0.10 - 10.20.0.49"
+          client-class: iPXE_Client
+          option-data:
+            - name: boot-file-name
+              data: "http://10.20.0.5/boot/menu.ipxe"
+
+        # --- UEFI x86_64 (arch 0x0007 / 0x0009) ---
+        - range: "10.20.0.50 - 10.20.0.99"
+          client-class: PXE_UEFI_x64
+          option-data:
+            - name: boot-file-name
+              data: "bootx64.efi"
+
+        # --- UEFI ARM64 (arch 0x000B) — separate TFTP root, per-arch server ---
+        - range: "10.20.0.100 - 10.20.0.119"
+          client-class: PXE_UEFI_ARM64
+          option-data:
+            - name: next-server
+              data: "10.20.0.6"
+            - name: tftp-server-name
+              data: "10.20.0.6"
+            - name: boot-file-name
+              data: "bootaa64.efi"
+
+        # --- Legacy BIOS (arch 0x0000) ---
+        - range: "10.20.0.120 - 10.20.0.149"
+          client-class: PXE_BIOS_Legacy
+          option-data:
+            - name: boot-file-name
+              data: "pxelinux.0"
+
+        # --- Non-PXE clients on the same broadcast domain (workstations,
+        # phones, laptops joining the lab network) get a normal lease with
+        # no boot-file-name override. Because this subnet has restricted
+        # pools above, the tool auto-generates a CatchAll_<id> class that
+        # guards this pool so it only serves clients matching none of the
+        # PXE classes.
+        - range: "10.20.1.10 - 10.20.1.250"
+
+      reservations:
+        # PXE server / imaging console itself gets a static address.
+        - hw-address: "00:1a:2b:3c:4d:5e"
+          ip-address: "10.20.0.5"
+          hostname: pxe-imaging-console
