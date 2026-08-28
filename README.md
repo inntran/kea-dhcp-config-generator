@@ -66,6 +66,10 @@ kea-confgen --help
 
 This installs the `kea-confgen` console command.
 
+For an end-to-end explanation of processing order, supported configuration
+forms, sample selection, validation boundaries, and test coverage, see the
+[Configuration Processing Guide](docs/configuration-processing-guide.md).
+
 ## Quick start
 
 ```bash
